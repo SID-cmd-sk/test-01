@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.local/contracts/upload.request.json",
+  "title": "UploadRequest",
+  "type": "object",
+  "required": ["filename", "sourcePath", "requestedOutputs"],
+  "properties": {
+    "filename": { "type": "string", "minLength": 1 },
+    "sourcePath": { "type": "string", "minLength": 1 },
+    "requestedOutputs": {
+      "type": "array",
+      "items": { "type": "string", "enum": ["dxf", "preview"] },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "correlationId": { "type": "string" },
+    "ruleProfileId": { "type": "string" }
+  },
+  "additionalProperties": false
+}

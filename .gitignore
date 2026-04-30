@@ -1,0 +1,8 @@
+# Runtime artifacts
+storage/app.db
+jobs/*
+logs/*
+
+# Keep directory placeholders
+!jobs/README.md
+!logs/README.md
