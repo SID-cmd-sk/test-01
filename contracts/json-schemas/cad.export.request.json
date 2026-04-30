@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.local/contracts/cad.export.request.json",
+  "title": "CadExportRequest",
+  "type": "object",
+  "required": ["jobId", "layerStrategy", "sourceExtractionPath"],
+  "properties": {
+    "jobId": { "type": "string" },
+    "sourceExtractionPath": { "type": "string" },
+    "layerStrategy": {
+      "type": "object",
+      "required": ["defaultLayer"],
+      "properties": {
+        "defaultLayer": { "type": "string" },
+        "rules": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["match", "layerName"],
+            "properties": {
+              "match": { "type": "object" },
+              "layerName": { "type": "string" }
+            },
+            "additionalProperties": false
+          }
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}
