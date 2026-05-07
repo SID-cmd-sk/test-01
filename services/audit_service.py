@@ -1,36 +1,35 @@
-# services/audit_service.py
-"""
-Audit log — writes every significant action to Firestore audit_log collection.
-Non-blocking: fire and forget via background thread.
+"""Local audit logging.
+
+Audit entries are appended to ``data/master_data.json`` under the single ``logs``
+array.  The sync engine may later bridge these entries, but local storage remains
+the source of truth and the function never blocks UI threads.
 """
 
 import threading
-from utils.helpers import utc_now_iso
+
+from services.local_storage_service import local_storage
 
 
 def log_action(action: str, details: str = "", target_id: str = "") -> None:
-    """
-    Write an audit entry asynchronously.
-    Never raises — silently swallows errors.
-    """
+    """Write an audit entry asynchronously and never raise into the UI."""
     def _write():
         try:
-            from firebase_client import firebase
             from utils.auth import session
             from services.config_service import global_config
 
             if global_config.get_val("audit_enabled") != "true":
                 return
 
-            firebase.create_document("audit_log", {
-                "actor_uid":   session.uid or "",
-                "actor_name":  session.name or "",
-                "actor_role":  session.role or "",
-                "action":      action,
-                "details":     details,
-                "target_id":   target_id,
-                "timestamp":   utc_now_iso(),
-            })
+            local_storage.append_log(
+                action,
+                details,
+                target_id,
+                actor={
+                    "uid": session.uid or "",
+                    "name": session.name or "",
+                    "role": session.role or "",
+                },
+            )
         except Exception:
             pass
 

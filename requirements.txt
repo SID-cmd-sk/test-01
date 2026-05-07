@@ -1,13 +1,11 @@
-# SR Manager v2 — Requirements
-# Install with: pip install -r requirements.txt
-
-# Core GUI
-PyQt6>=6.6.0
-
-# WhatsApp Web embedded browser (QR mode)
-# Install separately — optional, only needed for QR mode:
-#   pip install PyQt6-WebEngine
-# PyQt6-WebEngine>=6.6.0
-
-# HTTP client (Firebase REST + Twilio + Meta API)
-requests>=2.31.0
+PyQt6
+pandas
+openpyxl
+schedule
+gspread
+oauth2client
+cryptography
+watchdog
+requests
+supabase
+python-dotenv
