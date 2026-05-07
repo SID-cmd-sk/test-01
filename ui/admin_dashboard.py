@@ -41,6 +41,14 @@ class LoadAllWorker(QThread):
             self.error.emit(str(e))
 
 
+class SyncNowWorker(QThread):
+    done = pyqtSignal(dict)
+
+    def run(self):
+        from services.sync_service import sync_service
+        self.done.emit(sync_service.manual_sync())
+
+
 class CreateUserWorker(QThread):
     done  = pyqtSignal()
     error = pyqtSignal(str)
@@ -226,6 +234,8 @@ class AdminDashboard(QWidget):
             self._nav_btns[attr].clicked.connect(lambda _, n=i: self._switch_tab(n))
 
         sb.addStretch()
+        sync_btn = QPushButton("🔄  Sync Now"); sync_btn.setObjectName("sidebar_nav"); sync_btn.clicked.connect(self._manual_sync)
+        sb.addWidget(sync_btn)
         self.sync_lbl = QLabel("● Live"); self.sync_lbl.setStyleSheet("color:#10B981;font-size:11px;padding:0 20px;")
         sb.addWidget(self.sync_lbl)
 
@@ -481,6 +491,20 @@ class AdminDashboard(QWidget):
         w.done.connect(self._refresh_all)
         w.error.connect(lambda msg: QMessageBox.critical(self, "Error", msg))
         self._workers.append(w); w.start()
+
+    def _manual_sync(self):
+        self.sync_lbl.setText("↻ Syncing…")
+        w = SyncNowWorker()
+        w.done.connect(self._on_manual_sync_done)
+        w.finished.connect(lambda: self._workers.remove(w) if w in self._workers else None)
+        self._workers.append(w); w.start()
+
+    def _on_manual_sync_done(self, result: dict):
+        if result.get("ok"):
+            self.sync_lbl.setText("● Synced")
+            self._refresh_all()
+        else:
+            self.sync_lbl.setText("⚠ Sync Queued")
 
     def _toggle_suspend(self, uid: str, currently_active: bool):
         new_state = not currently_active

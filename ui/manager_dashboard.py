@@ -75,6 +75,14 @@ class UpdateSRWorker(QThread):
             self.error.emit(str(e))
 
 
+class SyncNowWorker(QThread):
+    done = pyqtSignal(dict)
+
+    def run(self):
+        from services.sync_service import sync_service
+        self.done.emit(sync_service.manual_sync())
+
+
 # ── Create SR Dialog ──────────────────────────────────────────────────────────
 
 class CreateSRDialog(QDialog):
@@ -361,6 +369,8 @@ class ManagerDashboard(QWidget):
         sb.addWidget(self.nav_stats_btn)
 
         sb.addStretch()
+        sync_btn = QPushButton("🔄  Sync Now"); sync_btn.setObjectName("sidebar_nav"); sync_btn.clicked.connect(self._manual_sync)
+        sb.addWidget(sync_btn)
         self.sync_lbl = QLabel("● Live"); self.sync_lbl.setStyleSheet("color:#10B981;font-size:11px;padding:0 20px;")
         sb.addWidget(self.sync_lbl)
         logout_btn = QPushButton("🚪  Log Out"); logout_btn.setStyleSheet("QPushButton{background:transparent;color:#94A3B8;border:none;text-align:left;padding:10px 20px;}QPushButton:hover{color:#EF4444;}")
@@ -497,6 +507,20 @@ class ManagerDashboard(QWidget):
 
     def _on_error(self, msg):
         self.sync_lbl.setText("⚠ Sync Error"); self.sync_lbl.setStyleSheet("color:#EF4444;font-size:11px;padding:0 20px;")
+
+    def _manual_sync(self):
+        self.sync_lbl.setText("↻ Syncing…")
+        w = SyncNowWorker()
+        w.done.connect(self._on_manual_sync_done)
+        w.finished.connect(lambda: self._workers.remove(w) if w in self._workers else None)
+        self._workers.append(w); w.start()
+
+    def _on_manual_sync_done(self, result: dict):
+        if result.get("ok"):
+            self.sync_lbl.setText("● Synced")
+            self._refresh()
+        else:
+            self.sync_lbl.setText("⚠ Sync Queued")
 
     def _open_create(self):
         dlg = CreateSRDialog(self._users, self._templates, self._srs, self)

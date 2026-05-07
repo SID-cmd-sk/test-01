@@ -1,6 +1,6 @@
 # services/config_service.py
 """
-Global configuration — loaded from Firestore settings/global_config.
+Global configuration — loaded from local data/master_data.json settings/global_config.
 Includes branding, WhatsApp, email, labels, and notification settings.
 """
 

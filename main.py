@@ -14,6 +14,8 @@ from utils.auth import session
 from utils.helpers import build_stylesheet
 from services.config_service import global_config
 from services.scheduler import daily_report_scheduler
+from services.backup_service import backup_service
+from services.sync_service import sync_service
 
 from ui.login import LoginScreen
 from ui.admin_dashboard import AdminDashboard
@@ -150,7 +152,9 @@ class MainWindow(QMainWindow):
 
 def main():
     # Load config with defaults before window appears
+    backup_service.backup("startup")
     global_config.load()
+    sync_service.start_auto_sync()
 
     app = QApplication(sys.argv)
     app.setApplicationName("SR Manager")
@@ -169,6 +173,8 @@ def main():
     daily_report_scheduler.start()
     exit_code = app.exec()
     daily_report_scheduler.stop()
+    sync_service.stop_auto_sync()
+    backup_service.backup("shutdown")
     sys.exit(exit_code)
 
 
