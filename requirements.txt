@@ -1,11 +1,36 @@
-PyQt6
-pandas
-openpyxl
-schedule
-gspread
-oauth2client
-cryptography
-watchdog
-requests
-supabase
-python-dotenv
+# SR Manager Enterprise 2026 — Python Dependencies
+# Install: pip install -r requirements.txt
+
+# ── UI Framework ──────────────────────────────────────────────────────────────
+PyQt6>=6.6.0
+PyQt6-WebEngine>=6.6.0          # For WhatsApp QR web view
+
+# ── Database / Cloud ──────────────────────────────────────────────────────────
+supabase>=2.0.0                 # Phase 2: Supabase cloud sync
+postgrest>=0.16.0               # Supabase dependency
+
+# ── Authentication ────────────────────────────────────────────────────────────
+msal>=1.26.0                    # Phase 3: Microsoft / Azure AD login
+
+# ── Data processing ───────────────────────────────────────────────────────────
+pandas>=2.1.0
+openpyxl>=3.1.0                 # Excel read/write
+reportlab>=4.0.0                # PDF export
+
+# ── Google Sheets ─────────────────────────────────────────────────────────────
+gspread>=6.0.0
+oauth2client>=4.1.3
+
+# ── Networking / Automation ───────────────────────────────────────────────────
+requests>=2.31.0
+schedule>=1.2.0
+watchdog>=3.0.0
+
+# ── Security / Crypto ─────────────────────────────────────────────────────────
+cryptography>=41.0.0
+
+# ── Environment ───────────────────────────────────────────────────────────────
+python-dotenv>=1.0.0
+
+# ── Optional: AI assistant (Phase 4) ─────────────────────────────────────────
+# anthropic>=0.25.0             # Uncomment when ai_assistant_service is built

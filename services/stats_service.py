@@ -46,7 +46,8 @@ class StatsResult:
 
 class StatsService:
 
-    OVERDUE_DAYS = 3   # SRs open longer than this are "overdue"
+    # OVERDUE_DAYS is now loaded from global_config ("overdue_days" setting, default 3)
+    # This allows admins to configure SLA thresholds without code changes
 
     def compute(self, srs: List[Dict], users: List[Dict],
                 filter_uid: Optional[str] = None) -> StatsResult:
@@ -82,7 +83,7 @@ class StatsService:
         for sr in srs:
             if sr.get("status") in ("open", "in_progress"):
                 created = self._parse_ts(sr.get("created_at"))
-                if created and (now - created).days >= self.OVERDUE_DAYS:
+                if created and (now - created).days >= _overdue_days():
                     overdue.append(sr)
         result.overdue_count = len(overdue)
         result.overdue_srs   = overdue

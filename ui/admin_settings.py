@@ -115,6 +115,7 @@ class AdminSettingsPanel(QWidget):
         tabs.addTab(self._build_whatsapp_tab(),        "📱 WhatsApp")
         tabs.addTab(self._build_email_tab(),           "📧 Email")
         tabs.addTab(self._build_notifications_tab(),   "🔔 Notifications")
+        tabs.addTab(self._build_cloud_tab(),           "☁ Cloud Sync")
         tabs.addTab(self._build_danger_tab(),          "☠ Danger Zone")
 
         lay.addWidget(tabs)
@@ -325,7 +326,7 @@ class AdminSettingsPanel(QWidget):
 
         audit_grp = QGroupBox("Audit Log")
         af = QVBoxLayout(audit_grp)
-        self.audit_enabled = QCheckBox("Enable audit log (writes every action to Firestore)")
+        self.audit_enabled = QCheckBox("Enable audit log (records every action locally)")
         af.addWidget(self.audit_enabled)
         lay.addWidget(audit_grp)
 
@@ -333,6 +334,12 @@ class AdminSettingsPanel(QWidget):
         return w
 
     # ── Danger Zone tab ───────────────────────────────────────────────────────
+
+    def _build_cloud_tab(self) -> QWidget:
+        """Cloud Sync tab — delegates to CloudSyncSettingsPanel."""
+        from ui.cloud_sync_settings import CloudSyncSettingsPanel
+        self._cloud_settings = CloudSyncSettingsPanel()
+        return self._cloud_settings
 
     def _build_danger_tab(self) -> QWidget:
         w = QWidget()
@@ -521,8 +528,8 @@ class AdminSettingsPanel(QWidget):
         if not path:
             return
         try:
-            from firebase_client import firebase
-            srs = firebase.get_collection("service_requests")
+            from db import storage
+            srs = storage.get_collection("service_requests")
             import csv
             keys = ["id", "title", "description", "status", "priority",
                     "type", "assigned_to", "created_by", "created_at", "updated_at"]
@@ -565,10 +572,10 @@ class AdminSettingsPanel(QWidget):
             return
 
         try:
-            from firebase_client import firebase
-            srs = firebase.get_collection("service_requests")
+            from db import storage
+            srs = storage.get_collection("service_requests")
             for sr in srs:
-                firebase.delete_document("service_requests", sr["id"])
+                storage.delete_document("service_requests", sr["id"])
             QMessageBox.information(self, "Done", f"Deleted {len(srs)} service requests.")
         except Exception as e:
             QMessageBox.critical(self, "Error", str(e))

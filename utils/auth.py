@@ -1,7 +1,7 @@
 # utils/auth.py
 """
 Session management + dynamic permission system.
-Permissions are loaded from Firestore roles collection at login.
+Permissions are loaded from local roles collection at login.
 """
 
 from typing import Optional, List, Dict, Any

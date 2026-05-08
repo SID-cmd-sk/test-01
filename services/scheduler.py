@@ -37,6 +37,12 @@ class DailyReportScheduler:
             today = now.strftime("%Y-%m-%d")
             if now.strftime("%H:%M") == rt and self._last_run_date != today:
                 send_daily_report()
+                # Also run automation overdue checks once per day
+                try:
+                    from services.automation_engine import check_overdue_srs
+                    check_overdue_srs()
+                except Exception:
+                    pass
                 self._last_run_date = today
         except Exception:
             pass

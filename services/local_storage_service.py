@@ -1,8 +1,7 @@
 """Single-file local JSON storage engine for SR Manager.
 
-All primary records live in ``data/master_data.json``.  Supabase and other cloud
-systems are treated as temporary bridges only; this module is the source of truth
-for users, SRs, reports, logs, settings, sync state and archive metadata.
+All primary records live in ``data/master_data.json``.
+This is the sole source of truth — fully offline, no cloud required.
 """
 
 from __future__ import annotations

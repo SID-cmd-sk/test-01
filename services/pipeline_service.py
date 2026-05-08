@@ -1,7 +1,7 @@
 # services/pipeline_service.py
 """
 Pipeline / approval process service.
-Templates are stored in Firestore: pipeline_templates/{id}
+Templates are stored locally in pipeline_templates.
 SR pipeline state is stored inside the SR document: pipeline_state dict
 """
 
@@ -53,15 +53,15 @@ class PipelineService:
     # ── Template CRUD ──────────────────────────────────────────────────────────
 
     def get_templates(self) -> List[Dict]:
-        from firebase_client import firebase
-        return firebase.get_collection("pipeline_templates")
+        from db import storage
+        return storage.get_collection("pipeline_templates")
 
     def get_template(self, template_id: str) -> Optional[Dict]:
-        from firebase_client import firebase
-        return firebase.get_document("pipeline_templates", template_id)
+        from db import storage
+        return storage.get_document("pipeline_templates", template_id)
 
     def save_template(self, template: Dict) -> Dict:
-        from firebase_client import firebase
+        from db import storage
         from utils.auth import session
 
         template["updated_at"] = utc_now_iso()
@@ -72,14 +72,14 @@ class PipelineService:
 
         tid = template.get("id")
         if tid:
-            firebase.update_document("pipeline_templates", tid, template)
+            storage.update_document("pipeline_templates", tid, template)
             return template
         else:
-            return firebase.create_document("pipeline_templates", template)
+            return storage.create_document("pipeline_templates", template)
 
     def delete_template(self, template_id: str) -> None:
-        from firebase_client import firebase
-        firebase.delete_document("pipeline_templates", template_id)
+        from db import storage
+        storage.delete_document("pipeline_templates", template_id)
 
     # ── SR pipeline state helpers ──────────────────────────────────────────────
 
@@ -128,20 +128,28 @@ class PipelineService:
         pipeline_state["current_step"] = next_step
         pipeline_state["steps_state"]  = steps
 
-        # Persist to Firestore
-        from firebase_client import firebase
-        firebase.update_document("service_requests", sr_id, {
+        # Persist locally
+        from db import storage
+        storage.update_document("service_requests", sr_id, {
             "pipeline_state": pipeline_state,
             "updated_at":     utc_now_iso(),
         })
 
-        # Notify
+        # Notify + fire automation
         try:
-            from firebase_client import firebase as fb
+            from db import storage as fb
             sr = fb.get_document("service_requests", sr_id) or {}
             step_name = steps[current].get("name", "Step") if current < len(steps) else ""
             from services.whatsapp_service import notify_sr_event
             notify_sr_event("step_done", sr, extra=f"'{step_name}' completed.")
+            # Desktop notification
+            from services.notification_service import notify_sr_event as desk_notify
+            desk_notify("step_done", sr)
+            # Automation rules
+            from services.automation_engine import fire_event
+            ctx = dict(sr)
+            ctx["step_name"] = step_name
+            fire_event("step_done", ctx)
         except Exception:
             pass
 
@@ -162,8 +170,8 @@ class PipelineService:
         pipeline_state["current_step"]  = current + 1
         pipeline_state["steps_state"]   = steps
 
-        from firebase_client import firebase
-        firebase.update_document("service_requests", sr_id, {
+        from db import storage
+        storage.update_document("service_requests", sr_id, {
             "pipeline_state": pipeline_state,
             "updated_at":     utc_now_iso(),
         })

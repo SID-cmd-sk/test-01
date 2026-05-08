@@ -59,8 +59,8 @@ class LoadRolesWorker(QThread):
 
     def run(self):
         try:
-            from firebase_client import firebase
-            custom = firebase.get_collection("roles")
+            from db import storage
+            custom = storage.get_collection("roles")
             # Merge with built-in roles
             built_in = [
                 {"id": r, "name": r.title(), "built_in": True,
@@ -84,16 +84,16 @@ class SaveRoleWorker(QThread):
 
     def run(self):
         try:
-            from firebase_client import firebase
+            from db import storage
             rid = self.role.get("id", "")
             if rid and not self.role.get("built_in"):
-                firebase.update_document("roles", rid, self.role)
+                storage.update_document("roles", rid, self.role)
             elif self.role.get("built_in"):
                 # Save built-in role overrides
-                firebase.create_document("role_overrides", self.role,
+                storage.create_document("role_overrides", self.role,
                                          doc_id=self.role["id"])
             else:
-                firebase.create_document("roles", self.role)
+                storage.create_document("roles", self.role)
             self.done.emit()
         except Exception as e:
             self.error.emit(str(e))
@@ -109,8 +109,8 @@ class DeleteRoleWorker(QThread):
 
     def run(self):
         try:
-            from firebase_client import firebase
-            firebase.delete_document("roles", self.role_id)
+            from db import storage
+            storage.delete_document("roles", self.role_id)
             self.done.emit()
         except Exception as e:
             self.error.emit(str(e))

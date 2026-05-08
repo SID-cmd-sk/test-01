@@ -13,7 +13,7 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt, pyqtSignal, QThread, pyqtSlot, QTimer
 from PyQt6.QtGui import QColor, QFont
 
-from firebase_client import firebase, FirebaseAuthError, FirebaseNetworkError
+from db import storage, LocalAuthError, LocalNetworkError
 from utils.auth import session, DEFAULT_PERMISSIONS
 from utils.helpers import (
     format_datetime, role_badge_color, status_color,
@@ -33,20 +33,15 @@ class LoadAllWorker(QThread):
 
     def run(self):
         try:
-            users = firebase.get_collection("users")
-            srs   = firebase.get_collection("service_requests")
-            audit = firebase.get_collection("audit_log")
+            users = storage.get_collection("users")
+            srs   = storage.get_collection("service_requests")
+            audit = storage.get_collection("audit_log")
             self.done.emit(users, srs, audit)
         except Exception as e:
             self.error.emit(str(e))
 
 
-class SyncNowWorker(QThread):
-    done = pyqtSignal(dict)
-
-    def run(self):
-        from services.sync_service import sync_service
-        self.done.emit(sync_service.manual_sync())
+from services.sync_service import SyncNowWorker  # noqa: F401  (replaces old stub)
 
 
 class CreateUserWorker(QThread):
@@ -60,8 +55,8 @@ class CreateUserWorker(QThread):
 
     def run(self):
         try:
-            uid = firebase.create_user(self.email, self.password)
-            firebase.create_document("users", {
+            uid = storage.create_user(self.email, self.password)
+            storage.create_document("users", {
                 "uid":              uid,
                 "email":            self.email,
                 "name":             self.name,
@@ -73,7 +68,7 @@ class CreateUserWorker(QThread):
             from services.audit_service import log_action
             log_action("user_created", f"Created {self.email} ({self.role})", uid)
             self.done.emit()
-        except (FirebaseAuthError, FirebaseNetworkError) as e:
+        except (LocalAuthError, LocalNetworkError) as e:
             self.error.emit(str(e))
         except Exception as e:
             self.error.emit(f"Failed: {e}")
@@ -91,7 +86,7 @@ class UpdateUserWorker(QThread):
     def run(self):
         try:
             self.data["updated_at"] = utc_now_iso()
-            firebase.update_document("users", self.uid, self.data)
+            storage.update_document("users", self.uid, self.data)
             from services.audit_service import log_action
             log_action("user_updated", str(self.data), self.uid)
             self.done.emit()
@@ -217,6 +212,7 @@ class AdminDashboard(QWidget):
             ("nav_roles",     "🔑  Roles"),
             ("nav_stats",     "📊  Statistics"),
             ("nav_settings",  "⚙️  Settings"),
+            ("nav_cloud",     "☁️  Cloud Sync"),
             ("nav_audit",     "📜  Audit Log"),
         ]
         self._nav_btns = {}
@@ -234,9 +230,9 @@ class AdminDashboard(QWidget):
             self._nav_btns[attr].clicked.connect(lambda _, n=i: self._switch_tab(n))
 
         sb.addStretch()
-        sync_btn = QPushButton("🔄  Sync Now"); sync_btn.setObjectName("sidebar_nav"); sync_btn.clicked.connect(self._manual_sync)
+        sync_btn = QPushButton("💾  Save Status"); sync_btn.setObjectName("sidebar_nav"); sync_btn.clicked.connect(self._manual_sync)
         sb.addWidget(sync_btn)
-        self.sync_lbl = QLabel("● Live"); self.sync_lbl.setStyleSheet("color:#10B981;font-size:11px;padding:0 20px;")
+        self.sync_lbl = QLabel("● Offline Mode"); self.sync_lbl.setStyleSheet("color:#10B981;font-size:11px;padding:0 20px;")
         sb.addWidget(self.sync_lbl)
 
         logout_btn = QPushButton("🚪  Log Out")
@@ -265,6 +261,10 @@ class AdminDashboard(QWidget):
         self._settings_panel = AdminSettingsPanel()
         self._settings_panel.stylesheet_changed.connect(self._apply_style)
         self.content_lay.addWidget(self._settings_panel); self._settings_panel.setVisible(False)
+
+        from ui.cloud_sync_settings import CloudSyncSettingsPanel
+        self._cloud_panel = CloudSyncSettingsPanel()
+        self.content_lay.addWidget(self._cloud_panel); self._cloud_panel.setVisible(False)
 
         self._build_audit_tab()
 
@@ -352,12 +352,12 @@ class AdminDashboard(QWidget):
 
     def _switch_tab(self, idx: int):
         tabs = [self.users_tab, self.srs_tab, self.pipeline_tab, self.roles_tab,
-                self.stats_tab, self._settings_panel, self.audit_tab]
+                self.stats_tab, self._settings_panel, self._cloud_panel, self.audit_tab]
         for i, tab in enumerate(tabs):
             tab.setVisible(i == idx)
         for i, (attr, _) in enumerate([
             ("nav_users",""), ("nav_srs",""), ("nav_pipeline",""), ("nav_roles",""),
-            ("nav_stats",""), ("nav_settings",""), ("nav_audit","")
+            ("nav_stats",""), ("nav_settings",""), ("nav_cloud",""), ("nav_audit","")
         ]):
             self._nav_btns[attr].setChecked(i == idx)
 
@@ -373,8 +373,20 @@ class AdminDashboard(QWidget):
     @pyqtSlot(list, list, list)
     def _on_data_loaded(self, users: list, srs: list, audit: list):
         self._users = users; self._srs = srs; self._audit = audit
-        self.sync_lbl.setText("● Live")
-        self.sync_lbl.setStyleSheet("color:#10B981;font-size:11px;padding:0 20px;")
+        # Update sync status label based on whether Supabase is configured
+        try:
+            from services.supabase_service import supabase_service
+            from services.local_storage_service import local_storage
+            dirty_count = sum(len(v) for v in local_storage.changed_records().values())
+            if supabase_service.is_configured():
+                label_txt = f"● Cloud Sync  ({dirty_count} pending)"
+                self.sync_lbl.setStyleSheet("color:#3B82F6;font-size:11px;padding:0 20px;")
+            else:
+                label_txt = "● Local Only"
+                self.sync_lbl.setStyleSheet("color:#10B981;font-size:11px;padding:0 20px;")
+            self.sync_lbl.setText(label_txt)
+        except Exception:
+            self.sync_lbl.setText("● Local Mode")
 
         # Build roles list for combos
         self._roles = [
@@ -382,7 +394,7 @@ class AdminDashboard(QWidget):
             for r in ("admin", "manager", "technical")
         ]
         try:
-            custom = firebase.get_collection("roles")
+            custom = storage.get_collection("roles")
             self._roles.extend(custom)
         except Exception:
             pass
@@ -493,7 +505,7 @@ class AdminDashboard(QWidget):
         self._workers.append(w); w.start()
 
     def _manual_sync(self):
-        self.sync_lbl.setText("↻ Syncing…")
+        self.sync_lbl.setText("↻ Checking…")
         w = SyncNowWorker()
         w.done.connect(self._on_manual_sync_done)
         w.finished.connect(lambda: self._workers.remove(w) if w in self._workers else None)
@@ -501,10 +513,10 @@ class AdminDashboard(QWidget):
 
     def _on_manual_sync_done(self, result: dict):
         if result.get("ok"):
-            self.sync_lbl.setText("● Synced")
+            self.sync_lbl.setText("● Saved Locally")
             self._refresh_all()
         else:
-            self.sync_lbl.setText("⚠ Sync Queued")
+            self.sync_lbl.setText("● Saved Locally")
 
     def _toggle_suspend(self, uid: str, currently_active: bool):
         new_state = not currently_active
@@ -527,4 +539,4 @@ class AdminDashboard(QWidget):
         self.sync_lbl.setStyleSheet("color:#EF4444;font-size:11px;padding:0 20px;")
 
     def _logout(self):
-        self.stop_polling(); firebase.logout(); self.logout_requested.emit()
+        self.stop_polling(); storage.logout(); self.logout_requested.emit()

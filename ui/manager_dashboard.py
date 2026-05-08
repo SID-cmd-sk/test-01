@@ -17,7 +17,7 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt, pyqtSignal, QThread, pyqtSlot, QTimer
 from PyQt6.QtGui import QColor, QFont
 
-from firebase_client import firebase
+from db import storage
 from utils.auth import session
 from utils.helpers import (
     format_datetime, status_color, utc_now_iso,
@@ -35,8 +35,8 @@ class LoadDataWorker(QThread):
 
     def run(self):
         try:
-            srs       = firebase.get_collection("service_requests")
-            users     = firebase.get_collection("users")
+            srs       = storage.get_collection("service_requests")
+            users     = storage.get_collection("users")
             templates = pipeline_service.get_templates()
             self.done.emit(srs, users, templates)
         except Exception as e:
@@ -52,7 +52,7 @@ class CreateSRWorker(QThread):
 
     def run(self):
         try:
-            firebase.create_document("service_requests", self.data)
+            storage.create_document("service_requests", self.data)
             from services.audit_service import log_action
             log_action("sr_created", self.data.get("title",""), "")
             self.done.emit()
@@ -69,7 +69,7 @@ class UpdateSRWorker(QThread):
 
     def run(self):
         try:
-            firebase.update_document("service_requests", self.sr_id, self.updates)
+            storage.update_document("service_requests", self.sr_id, self.updates)
             self.done.emit()
         except Exception as e:
             self.error.emit(str(e))
@@ -79,8 +79,8 @@ class SyncNowWorker(QThread):
     done = pyqtSignal(dict)
 
     def run(self):
-        from services.sync_service import sync_service
-        self.done.emit(sync_service.manual_sync())
+        # Offline mode — no sync needed
+        self.done.emit({"ok": True, "message": "Offline mode: all data saved locally."})
 
 
 # ── Create SR Dialog ──────────────────────────────────────────────────────────
@@ -369,9 +369,9 @@ class ManagerDashboard(QWidget):
         sb.addWidget(self.nav_stats_btn)
 
         sb.addStretch()
-        sync_btn = QPushButton("🔄  Sync Now"); sync_btn.setObjectName("sidebar_nav"); sync_btn.clicked.connect(self._manual_sync)
+        sync_btn = QPushButton("💾  Save Status"); sync_btn.setObjectName("sidebar_nav"); sync_btn.clicked.connect(self._manual_sync)
         sb.addWidget(sync_btn)
-        self.sync_lbl = QLabel("● Live"); self.sync_lbl.setStyleSheet("color:#10B981;font-size:11px;padding:0 20px;")
+        self.sync_lbl = QLabel("● Offline Mode"); self.sync_lbl.setStyleSheet("color:#10B981;font-size:11px;padding:0 20px;")
         sb.addWidget(self.sync_lbl)
         logout_btn = QPushButton("🚪  Log Out"); logout_btn.setStyleSheet("QPushButton{background:transparent;color:#94A3B8;border:none;text-align:left;padding:10px 20px;}QPushButton:hover{color:#EF4444;}")
         logout_btn.clicked.connect(self._logout); sb.addWidget(logout_btn)
@@ -496,7 +496,7 @@ class ManagerDashboard(QWidget):
     @pyqtSlot(list, list, list)
     def _on_data(self, srs, users, templates):
         self._srs = srs; self._users = users; self._templates = templates
-        self.sync_lbl.setText("● Live"); self.sync_lbl.setStyleSheet("color:#10B981;font-size:11px;padding:0 20px;")
+        self.sync_lbl.setText("● Offline Mode"); self.sync_lbl.setStyleSheet("color:#10B981;font-size:11px;padding:0 20px;")
         self.stat_all._val_label.setText(str(len(srs)))
         self.stat_open._val_label.setText(str(sum(1 for s in srs if s.get("status")=="open")))
         self.stat_prog._val_label.setText(str(sum(1 for s in srs if s.get("status")=="in_progress")))
@@ -509,7 +509,7 @@ class ManagerDashboard(QWidget):
         self.sync_lbl.setText("⚠ Sync Error"); self.sync_lbl.setStyleSheet("color:#EF4444;font-size:11px;padding:0 20px;")
 
     def _manual_sync(self):
-        self.sync_lbl.setText("↻ Syncing…")
+        self.sync_lbl.setText("↻ Checking…")
         w = SyncNowWorker()
         w.done.connect(self._on_manual_sync_done)
         w.finished.connect(lambda: self._workers.remove(w) if w in self._workers else None)
@@ -517,10 +517,10 @@ class ManagerDashboard(QWidget):
 
     def _on_manual_sync_done(self, result: dict):
         if result.get("ok"):
-            self.sync_lbl.setText("● Synced")
+            self.sync_lbl.setText("● Saved Locally")
             self._refresh()
         else:
-            self.sync_lbl.setText("⚠ Sync Queued")
+            self.sync_lbl.setText("● Saved Locally")
 
     def _open_create(self):
         dlg = CreateSRDialog(self._users, self._templates, self._srs, self)
@@ -538,4 +538,4 @@ class ManagerDashboard(QWidget):
             self._workers.append(w); w.start()
 
     def _logout(self):
-        self.stop_polling(); firebase.logout(); self.logout_requested.emit()
+        self.stop_polling(); storage.logout(); self.logout_requested.emit()

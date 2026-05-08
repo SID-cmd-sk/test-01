@@ -224,9 +224,9 @@ class StatsWorker(QThread):
 
     def run(self):
         try:
-            from firebase_client import firebase
-            srs   = firebase.get_collection("service_requests")
-            users = firebase.get_collection("users")
+            from db import storage
+            srs   = storage.get_collection("service_requests")
+            users = storage.get_collection("users")
             result = stats_service.compute(srs, users, self.filter_uid)
             self.done.emit(result, srs, users)
         except Exception as e:

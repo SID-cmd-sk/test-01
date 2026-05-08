@@ -87,8 +87,8 @@ def broadcast_message(message: str, roles: Optional[list] = None) -> None:
     """
     def _do():
         try:
-            from firebase_client import firebase
-            users = firebase.get_collection("users")
+            from db import storage
+            users = storage.get_collection("users")
             target_roles = roles or ["admin", "manager"]
             for u in users:
                 if u.get("role") in target_roles:
@@ -129,8 +129,8 @@ def notify_sr_event(event: str, sr: dict, extra: str = "") -> None:
     # Notify the assigned user + managers
     def _do():
         try:
-            from firebase_client import firebase
-            users    = firebase.get_collection("users")
+            from db import storage
+            users    = storage.get_collection("users")
             user_map = {u.get("uid", u.get("id", "")): u for u in users}
 
             targets = set()
@@ -156,10 +156,10 @@ def notify_sr_event(event: str, sr: dict, extra: str = "") -> None:
 
 
 def send_daily_report() -> None:
-    from firebase_client import firebase
+    from db import storage
     from services.config_service import global_config
     cfg    = global_config.get()
-    srs    = firebase.get_collection("service_requests")
+    srs    = storage.get_collection("service_requests")
     counts = Counter(sr.get("status", "unknown") for sr in srs)
     lines  = [f"  • {s.replace('_',' ').title()}: {c}" for s, c in sorted(counts.items())]
     report = "\n".join(lines) or "  No service requests found."

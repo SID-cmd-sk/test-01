@@ -18,7 +18,7 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt, pyqtSignal, QThread, pyqtSlot, QTimer
 from PyQt6.QtGui import QColor, QFont
 
-from firebase_client import firebase
+from db import storage
 from utils.auth import session
 from utils.helpers import (
     format_datetime, status_color, utc_now_iso,
@@ -36,11 +36,11 @@ class LoadMyDataWorker(QThread):
 
     def run(self):
         try:
-            all_srs = firebase.get_collection("service_requests")
+            all_srs = storage.get_collection("service_requests")
             uid     = session.uid
             my_srs  = [s for s in all_srs
                        if s.get("assigned_to")==uid or s.get("created_by")==uid]
-            users   = firebase.get_collection("users")
+            users   = storage.get_collection("users")
             self.done.emit(my_srs, users)
         except Exception as e:
             self.error.emit(str(e))
@@ -52,7 +52,7 @@ class CreateSRWorker(QThread):
     def __init__(self, data): super().__init__(); self.data = data
     def run(self):
         try:
-            firebase.create_document("service_requests", self.data)
+            storage.create_document("service_requests", self.data)
             from services.audit_service import log_action
             log_action("sr_created", self.data.get("title",""), "")
             self.done.emit()
@@ -66,7 +66,7 @@ class UpdateSRWorker(QThread):
     def __init__(self, sr_id, updates): super().__init__(); self.sr_id=sr_id; self.updates=updates
     def run(self):
         try:
-            firebase.update_document("service_requests", self.sr_id, self.updates)
+            storage.update_document("service_requests", self.sr_id, self.updates)
             self.done.emit()
         except Exception as e:
             self.error.emit(str(e))
@@ -248,7 +248,7 @@ class TechUpdateDialog(QDialog):
             self._pipeline_state = updated_ps
             # Check if pipeline done → auto set completed
             if pipeline_service.is_pipeline_complete(updated_ps):
-                firebase.update_document("service_requests", sr_id,
+                storage.update_document("service_requests", sr_id,
                     {"status":"completed","completed_at":utc_now_iso(),"updated_at":utc_now_iso()})
                 QMessageBox.information(self,"Pipeline Complete","All steps done. SR marked Completed.")
             else:
@@ -467,4 +467,4 @@ class TechnicalDashboard(QWidget):
         self._workers.append(w); w.start()
 
     def _logout(self):
-        self.stop_polling(); firebase.logout(); self.logout_requested.emit()
+        self.stop_polling(); storage.logout(); self.logout_requested.emit()

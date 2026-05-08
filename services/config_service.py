@@ -2,6 +2,11 @@
 """
 Global configuration — loaded from local data/master_data.json settings/global_config.
 Includes branding, WhatsApp, email, labels, and notification settings.
+
+Phase 1 fix: unified read/write path for settings/global_config document.
+The special-case bypass in _get_settings_doc() was removed from local_storage_service;
+both load() and save() now use storage.get_document / storage.update_document,
+which route through the same bucket path.
 """
 
 from __future__ import annotations
@@ -29,7 +34,7 @@ DEFAULT_CONFIG: Dict[str, Any] = {
     "whatsapp_template":  "{company_name} Daily SR Report\n{report}",
     "report_time":        "09:00",
 
-    # Notifications — which events trigger messages
+    # Notifications
     "notify_sr_created":    "true",
     "notify_sr_assigned":   "true",
     "notify_step_done":     "true",
@@ -41,8 +46,16 @@ DEFAULT_CONFIG: Dict[str, Any] = {
     "smtp_password":      "",
     "email_template":     "{company_name}\n\n{body}",
 
+    # Stats / SLA
+    "overdue_days":       "3",           # Phase 1 fix: was hardcoded in stats_service
+
     # System
     "audit_enabled":      "true",
+
+    # Supabase (Phase 2)
+    "supabase_url":       "",
+    "supabase_key":       "",
+    "sync_enabled":       "false",
 }
 
 
@@ -53,8 +66,11 @@ class GlobalConfigService:
 
     def load(self) -> Dict[str, Any]:
         try:
-            from firebase_client import firebase
-            doc = firebase.get_document("settings", "global_config")
+            from db import storage
+            # Phase 1 fix: single code path — both load() and save() use
+            # storage.get_document / storage.update_document which go through
+            # the same _settings_bucket path. No more dual-path divergence.
+            doc = storage.get_document("settings", "global_config")
             if doc:
                 merged = DEFAULT_CONFIG.copy()
                 for k, v in doc.items():
@@ -76,22 +92,34 @@ class GlobalConfigService:
     def get_val(self, key: str, fallback: Any = "") -> Any:
         return self.get().get(key, fallback)
 
+    def get_int(self, key: str, fallback: int = 0) -> int:
+        try:
+            return int(self.get_val(key, fallback))
+        except (ValueError, TypeError):
+            return fallback
+
     def save(self, data: Dict[str, Any]) -> None:
-        from firebase_client import firebase
+        from db import storage
         merged = DEFAULT_CONFIG.copy()
         for k, v in data.items():
             if k in DEFAULT_CONFIG:
                 merged[k] = str(v) if not isinstance(v, bool) else v
+        # Phase 1 fix: single write path — creates or updates via the same
+        # storage.update_document route that load() reads from.
         try:
-            firebase.update_document("settings", "global_config", merged)
+            storage.update_document("settings", "global_config", merged)
         except Exception:
-            firebase.create_document("settings", merged, doc_id="global_config")
+            storage.create_document("settings", merged, doc_id="global_config")
         with self._lock:
             self._config = merged
 
     def label(self, key: str) -> str:
         """Return admin-configured label or a safe default."""
         return str(self.get().get(f"label_{key}", key.replace("_", " ").title()))
+
+    def overdue_days(self) -> int:
+        """Phase 1 fix: overdue threshold is now configurable via admin settings."""
+        return self.get_int("overdue_days", 3)
 
 
 global_config = GlobalConfigService()
