@@ -6,7 +6,7 @@ Functions:
   utc_now_iso()             — current UTC time as ISO string
   format_datetime(s)        — pretty-print ISO datetime
   validate_email(s)         — basic email check, returns bool
-  validate_password(s)      — min-length check, returns bool
+  validate_password(s)      — password policy check, returns (bool, msg)
   validate_time(s)          — HH:MM format check, returns bool
   validate_required(v, f)   — non-empty check, returns (bool, msg)
   truncate(s, n)            — shorten string with ellipsis
@@ -61,8 +61,13 @@ def validate_email(email: str) -> bool:
     return bool(re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", (email or "").strip()))
 
 
-def validate_password(password: str) -> bool:
-    return len(password or "") >= 8
+def validate_password(password: str) -> Tuple[bool, str]:
+    password = password or ""
+    if len(password) < 8:
+        return False, "Password must be at least 8 characters."
+    if not re.search(r"[A-Za-z]", password) or not re.search(r"\d", password):
+        return False, "Password must include at least one letter and one number."
+    return True, ""
 
 
 def validate_time(time_str: str) -> bool:

@@ -57,10 +57,9 @@ class SetupWorker(QThread):
             cfg["company_name"] = self.company
             cfg["app_name"]     = self.app_name
             try:
-                from db import storage
-                storage.create_document("settings", cfg, doc_id="global_config")
+                local_storage.create_document("settings", cfg, doc_id="global_config")
             except Exception:
-                pass
+                local_storage.update_document("settings", "global_config", cfg)
             global_config.reload()
 
             from services.audit_service import log_action
@@ -275,8 +274,9 @@ class FirstRunSetupDialog(QDialog):
             return self._err("Full name is required.")
         if not validate_email(email):
             return self._err("Please enter a valid email address.")
-        if len(pwd) < 8:
-            return self._err("Password must be at least 8 characters.")
+        ok, msg = validate_password(pwd)
+        if not ok:
+            return self._err(msg)
         if pwd != confirm:
             return self._err("Passwords do not match.")
 

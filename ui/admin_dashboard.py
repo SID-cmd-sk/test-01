@@ -16,7 +16,7 @@ from PyQt6.QtGui import QColor, QFont
 from db import storage, LocalAuthError, LocalNetworkError
 from utils.auth import session, DEFAULT_PERMISSIONS
 from utils.helpers import (
-    format_datetime, role_badge_color, status_color,
+    format_datetime, role_badge_color, status_color, priority_color,
     utc_now_iso, validate_email, validate_password, truncate
 )
 from ui.admin_settings  import AdminSettingsPanel
@@ -178,7 +178,7 @@ class AdminDashboard(QWidget):
         self._srs:    list = []
         self._audit:  list = []
         self._roles:  list = []
-        self._poll_timer = QTimer(); self._poll_timer.setInterval(3000)
+        self._poll_timer = QTimer(self); self._poll_timer.setInterval(10000)
         self._poll_timer.timeout.connect(self._refresh_all)
         self._workers: list = []
         self._settings_panel = None
@@ -405,6 +405,8 @@ class AdminDashboard(QWidget):
     # ── Data refresh ──────────────────────────────────────────────────────────
 
     def _refresh_all(self):
+        if any(isinstance(worker, LoadAllWorker) and worker.isRunning() for worker in self._workers):
+            return
         w = LoadAllWorker()
         w.done.connect(self._on_data_loaded)
         w.error.connect(self._on_error)
@@ -452,6 +454,7 @@ class AdminDashboard(QWidget):
         self.stat_techs._val_label.setText(str(sum(1 for u in users if u.get("role") == "technical")))
 
     def _populate_users(self, users: list):
+        self.users_table.setUpdatesEnabled(False)
         self.users_table.setRowCount(len(users))
         for row, u in enumerate(users):
             role = u.get("role", "technical")
@@ -488,9 +491,11 @@ class AdminDashboard(QWidget):
             cl.addWidget(role_combo); cl.addWidget(save_btn); cl.addWidget(suspend_btn)
             self.users_table.setCellWidget(row, 5, cell_w)
             self.users_table.setRowHeight(row, 44)
+        self.users_table.setUpdatesEnabled(True)
 
     def _populate_srs(self, srs: list, users: list):
         user_map = {u.get("uid", u.get("id","")): u.get("name","?") for u in users}
+        self.srs_table.setUpdatesEnabled(False)
         self.srs_table.setRowCount(len(srs))
         for row, sr in enumerate(srs):
             status   = sr.get("status", "open")
@@ -516,9 +521,11 @@ class AdminDashboard(QWidget):
                     item.setFont(QFont("", -1, QFont.Weight.Bold))
                 self.srs_table.setItem(row, col, item)
             self.srs_table.setRowHeight(row, 40)
+        self.srs_table.setUpdatesEnabled(True)
 
     def _populate_audit(self, audit: list):
         sorted_audit = sorted(audit, key=lambda x: x.get("timestamp",""), reverse=True)
+        self.audit_table.setUpdatesEnabled(False)
         self.audit_table.setRowCount(len(sorted_audit))
         for row, entry in enumerate(sorted_audit):
             cells = [
@@ -534,6 +541,7 @@ class AdminDashboard(QWidget):
                 item.setFlags(Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable)
                 self.audit_table.setItem(row, col, item)
             self.audit_table.setRowHeight(row, 36)
+        self.audit_table.setUpdatesEnabled(True)
 
     # ── Actions ───────────────────────────────────────────────────────────────
 

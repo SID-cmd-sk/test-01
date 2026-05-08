@@ -1,6 +1,6 @@
 -- SR Manager Enterprise 2026 — Supabase Schema
 -- Run this entire file in your Supabase SQL Editor (Dashboard → SQL Editor → New Query)
--- Project: https://thkwsemjeqtrumzleeqz.supabase.co
+-- No project URL or key is hardcoded; configure per installation.
 
 -- ═══════════════════════════════════════════════════════════════
 -- EXTENSIONS
@@ -129,11 +129,16 @@ create table if not exists public.attachments (
     id          text primary key,
     sr_id       text references public.sr_entries(id),
     filename    text not null,
-    file_path   text,
-    file_size   bigint,
-    mime_type   text,
-    uploaded_by text references public.users(id),
-    created_at  timestamptz not null default now()
+    local_path   text,
+    cloud_url    text,
+    storage_path text,
+    file_size    bigint,
+    sha256       text,
+    mime_type    text,
+    uploaded_by  text references public.users(id),
+    upload_error text,
+    created_at   timestamptz not null default now(),
+    updated_at   timestamptz
 );
 
 -- Analytics snapshots
@@ -208,6 +213,8 @@ create index if not exists idx_tasks_sr_id              on public.tasks(sr_id);
 create index if not exists idx_activity_logs_timestamp  on public.activity_logs(timestamp desc);
 create index if not exists idx_activity_logs_actor_uid  on public.activity_logs(actor_uid);
 create index if not exists idx_notifications_user_id    on public.notifications(user_id);
+create index if not exists idx_attachments_sr_id        on public.attachments(sr_id);
+create index if not exists idx_attachments_updated_at   on public.attachments(updated_at desc);
 create index if not exists idx_users_email              on public.users(email);
 
 -- ═══════════════════════════════════════════════════════════════
@@ -229,12 +236,11 @@ alter table public.whatsapp_templates enable row level security;
 alter table public.automation_rules   enable row level security;
 alter table public.settings        enable row level security;
 
--- For the desktop app using the service role key (anon key with RLS):
--- All operations are authenticated via supabase-py with the service key.
--- The policies below allow service role full access.
--- IMPORTANT: Use the SERVICE ROLE key in production (not anon key).
+-- The desktop app is local-first; Supabase is only a lightweight mirror.
+-- Prefer a least-privilege key and policies appropriate for your deployment.
+-- The permissive service-role policy below is for private small-team installs only.
 
--- Service role bypass policy (applied to all tables)
+-- Service role policy (applied to all tables)
 do $$
 declare
     t text;
@@ -273,7 +279,7 @@ declare
 begin
     foreach t in array array[
         'users','roles','sr_entries','tasks','pipelines',
-        'reports','mail_templates','whatsapp_templates','automation_rules'
+        'reports','attachments','mail_templates','whatsapp_templates','automation_rules'
     ]
     loop
         execute format(

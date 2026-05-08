@@ -1,8 +1,8 @@
 # SR Manager Enterprise 2026
 
-A modern enterprise desktop ERP platform for service request management, field operations, pipeline automation, and team communication.
+A local-first PyQt6 desktop service-request manager for small teams that need offline operation, role-based dashboards, attachments, lightweight backups, and optional Supabase sync.
 
-Built with **PyQt6** + **Supabase** + **Microsoft Login**.
+Built with **PyQt6** + **local JSON storage** + **optional Supabase sync**.
 
 ---
 
@@ -14,10 +14,10 @@ LOCAL JSON  ←→  SYNC ENGINE  ←→  SUPABASE (cloud DB)
  All writes                         Multi-device access
  (fast, offline)                    (cloud mirror)
 
-MICROSOFT LOGIN → Azure AD → Local user record → Role + Permissions
+LOGIN → Local JSON user record → Role + Permissions → Dashboard
 ```
 
-**Key design principle:** Local JSON is the primary write surface. All creates and updates go to `data/master_data.json` first, marked `_dirty=True`. The sync engine pushes dirty records to Supabase when internet is available. This keeps the app fully functional offline.
+**Key design principle:** Local JSON is the primary write surface. All creates and updates go to `data/master_data.json` first, marked `_dirty=True`. The sync engine pushes dirty records and attachment metadata to Supabase only when internet is available and sync is enabled. This keeps the app fully functional offline and cheap to operate.
 
 ---
 
@@ -29,20 +29,17 @@ MICROSOFT LOGIN → Azure AD → Local user record → Role + Permissions
 pip install -r requirements.txt
 ```
 
-### 2. Configure environment
+### 2. Optional: configure Supabase sync
 
-```bash
-cp .env.example .env
-# Edit .env with your Supabase URL and key
-```
+Supabase is optional. For local-only operation, skip this step. To enable lightweight sync, set `SUPABASE_URL` and `SUPABASE_KEY` in the environment or enter them in Admin Settings → Cloud Sync. Do not commit real keys to source control.
 
-### 3. Set up Supabase (Phase 2)
+### 3. Optional: set up Supabase
 
 1. Create a project at [supabase.com](https://supabase.com)
 2. Go to **SQL Editor → New Query**
 3. Paste and run `setup/supabase_schema.sql`
-4. Copy your **Project URL** and **Service Role Key** (Settings → API)
-5. Add them to `.env` or Admin Settings → Cloud Sync
+4. Copy your **Project URL** and a least-privilege project API key appropriate for your Supabase policies
+5. Add them via environment variables or Admin Settings → Cloud Sync, then explicitly enable sync
 
 ### 4. Run the app
 
@@ -54,7 +51,7 @@ On first launch, a **setup dialog** appears. Enter your admin name, email, and p
 
 ---
 
-## Microsoft Login Setup (Phase 3)
+## Microsoft Login Setup (Optional)
 
 1. Go to [Azure Portal → App Registrations](https://portal.azure.com/#view/Microsoft_AAD_RegisteredApps)
 2. Click **New Registration**
@@ -143,10 +140,21 @@ SyncNowWorker (QThread) → sync_service.push_dirty_records()
 For each dirty record → supabase_service.upsert_document()
     ↓
 On success → local_storage.mark_clean() → _dirty=False
-On failure → record stays dirty → retried next sync
+Deletes sync as tombstones, then purge locally after cloud delete succeeds
+On failure → record/attachment stays dirty → retried next sync
 ```
 
 **Conflict resolution:** Cloud wins on pull. Local dirty records are never overwritten during a pull — they are pushed first. If a record is both locally dirty and newer in the cloud, the push will overwrite the cloud version (last-writer-wins per device).
+
+---
+
+## Production Notes for Low-Cost Local-First Use
+
+- Keep `data/master_data.json`, `attachments/`, and `backups/` on reliable local storage.
+- Leave `sync_enabled=false` unless Supabase schema, policies, and Storage bucket are configured.
+- Use daily off-device copies of `backups/` plus periodic manual ZIP exports.
+- On 2 GB RAM servers, avoid polling-heavy companion services; use the built-in desktop sync button or modest background intervals.
+- Run lightweight checks before packaging: `python -m compileall .` and `python -m pytest -q`.
 
 ---
 
@@ -170,7 +178,7 @@ pyinstaller --onefile --windowed --name "SR Manager Enterprise" main.py
 | Problem | Solution |
 |---------|----------|
 | App shows first-run setup every launch | `data/master_data.json` was deleted or corrupted. Restore from `backups/`. |
-| Sync fails with "Not configured" | Add SUPABASE_URL and SUPABASE_KEY in Admin Settings → Cloud Sync |
+| Sync fails with "Not configured" | Add `SUPABASE_URL` and `SUPABASE_KEY` in the environment or Admin Settings → Cloud Sync, then enable sync |
 | Microsoft login not available | Add AZURE_CLIENT_ID in Admin Settings → Microsoft Login |
 | WhatsApp QR not loading | PyQt6-WebEngine not installed. Run `pip install PyQt6-WebEngine` |
 | `supabase` module not found | Run `pip install supabase` |
@@ -185,6 +193,6 @@ pyinstaller --onefile --windowed --name "SR Manager Enterprise" main.py
 | 1 | ✅ Done | Bug fixes: hardcoded admin, logout crash, settings path, configurable overdue |
 | 2 | ✅ Done | Supabase integration, real sync engine, SQL schema |
 | 3 | ✅ Done | Microsoft MSAL login, Azure AD, device-code flow |
-| 4 | 🔲 Next | Missing services: notifications, search, media/attachments |
-| 5 | 🔲 Planned | AI assistant (Claude API), voice notes, automation engine |
+| 4 | ✅ Done | Local attachments, notifications, search, automation services |
+| 5 | 🔲 Planned | Optional AI assistant, voice note enhancements |
 | 6 | 🔲 Planned | Multi-company, multi-language, form builder |

@@ -57,6 +57,7 @@ SYNCABLE_COLLECTIONS = [
     "tasks",
     "reports",
     "logs",
+    "attachments",
 ]
 
 
@@ -73,18 +74,46 @@ def push_dirty_records() -> SyncResult:
         result.ok = True  # not an error, just not set up
         return result
 
+    try:
+        from services.media_service import upload_pending_attachments
+        uploaded, upload_failed = upload_pending_attachments()
+        result.pushed += uploaded
+        if upload_failed:
+            result.failed += upload_failed
+            result.errors.append(f"attachments: {upload_failed} upload(s) failed and will retry")
+    except Exception as exc:
+        result.failed += 1
+        result.errors.append(f"attachment upload error: {exc}")
+
     dirty = local_storage.changed_records()
     total_dirty = sum(len(v) for v in dirty.values())
 
     if total_dirty == 0:
-        result.ok      = True
-        result.message = "All records up to date — nothing to push."
+        result.ok      = result.failed == 0
+        result.message = "All records up to date — nothing to push." if result.ok else "Attachment sync has retryable failures."
         return result
 
     for collection, records in dirty.items():
         if not records:
             continue
-        ok_count, fail_count = supabase_service.upsert_many(collection, records)
+        deletes = [r for r in records if r.get("_deleted")]
+        upserts = [r for r in records if not r.get("_deleted")]
+
+        ok_count = fail_count = 0
+        deleted_ids: List[str] = []
+        for record in deletes:
+            doc_id = str(record.get("id") or record.get("uid") or record.get("sr_id") or "")
+            if doc_id and supabase_service.delete_document(collection, doc_id):
+                ok_count += 1
+                deleted_ids.append(doc_id)
+            else:
+                fail_count += 1
+
+        if upserts:
+            up_ok, up_fail = supabase_service.upsert_many(collection, upserts)
+            ok_count += up_ok
+            fail_count += up_fail
+
         result.pushed += ok_count
         result.failed += fail_count
 
@@ -92,13 +121,12 @@ def push_dirty_records() -> SyncResult:
             result.errors.append(
                 f"{collection}: {fail_count} record(s) failed — {supabase_service.last_error}"
             )
-        elif ok_count > 0:
-            # Mark pushed records as clean
-            ids = [
-                str(r.get("id") or r.get("uid") or r.get("sr_id") or "")
-                for r in records
-            ]
+
+        if ok_count > 0:
+            ids = [str(r.get("id") or r.get("uid") or r.get("sr_id") or "") for r in upserts]
             local_storage.mark_clean(collection, [i for i in ids if i])
+            if deleted_ids:
+                local_storage.purge_deleted(collection, deleted_ids)
 
     result.ok = result.failed == 0
     result.message = (
@@ -147,7 +175,8 @@ def pull_from_supabase(
                 if existing is None:
                     # New record from cloud — create locally
                     record.pop("_dirty", None)
-                    local_storage.create_document(collection, record, doc_id=doc_id)
+                    record["_deleted"] = False
+                    local_storage.create_document(collection, record, doc_id=doc_id, mark_dirty=False)
                     result.pulled += 1
                 else:
                     # Conflict resolution: cloud wins for pull operations.
@@ -156,7 +185,8 @@ def pull_from_supabase(
                     if not existing.get("_dirty", False):
                         update_data = {k: v for k, v in record.items()
                                       if k not in ("_dirty",)}
-                        local_storage.update_document(collection, doc_id, update_data)
+                        update_data["_deleted"] = False
+                        local_storage.update_document(collection, doc_id, update_data, mark_dirty=False)
                         result.pulled += 1
 
         except Exception as e:

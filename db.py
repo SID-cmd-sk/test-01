@@ -65,6 +65,7 @@ class LocalStorageClient:
             self._uid = None
 
     def create_user(self, email: str, password: str) -> str:
+        self._require_if_protected("users", "create")
         if self._find_user_by_email(email):
             raise LocalAuthError("An account with this email already exists.")
         uid = str(uuid.uuid4())
@@ -84,6 +85,7 @@ class LocalStorageClient:
 
     def create_document(self, collection: str, data: dict,
                         doc_id: Optional[str] = None) -> dict:
+        self._require_if_protected(collection, "create")
         prepared = dict(data)
         if collection == "users":
             uid = doc_id or prepared.get("uid") or prepared.get("id")
@@ -98,6 +100,7 @@ class LocalStorageClient:
         )
 
     def update_document(self, collection: str, doc_id: str, data: dict) -> None:
+        self._require_if_protected(collection, "update")
         prepared = dict(data)
         if collection == "users":
             # Guard: master admin attributes are immutable
@@ -114,6 +117,7 @@ class LocalStorageClient:
         local_storage.update_document(collection, doc_id, prepared)
 
     def delete_document(self, collection: str, doc_id: str) -> None:
+        self._require_if_protected(collection, "delete")
         if collection == "users":
             doc = local_storage.get_document(collection, doc_id)
             if doc and doc.get("is_master_admin"):
@@ -146,6 +150,13 @@ class LocalStorageClient:
         return len(local_storage.get_collection("users")) == 0
 
     # ── Internal ──────────────────────────────────────────────────────────────
+
+    def _require_if_protected(self, collection: str, action: str) -> None:
+        from utils.auth import permission_for, require_permission, session
+        perm = permission_for(collection, action)
+        # First-run setup runs before a session exists and only when no local users exist.
+        if perm and (session.is_logged_in() or local_storage.get_collection("users")):
+            require_permission(perm)
 
     def _find_user_by_email(self, email: str) -> Optional[dict]:
         email_lower = email.strip().lower()

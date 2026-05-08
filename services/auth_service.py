@@ -79,9 +79,11 @@ class MicrosoftAuthService:
                 cache = msal.SerializableTokenCache()
                 if MSAL_CACHE_PATH.exists():
                     try:
-                        cache.deserialize(MSAL_CACHE_PATH.read_text(encoding="utf-8"))
+                        from services.encryption_service import encryption_service
+                        raw = encryption_service.decrypt_bytes(MSAL_CACHE_PATH.read_bytes())
+                        cache.deserialize(raw.decode("utf-8"))
                     except Exception:
-                        pass   # corrupted cache — start fresh
+                        pass   # corrupted or legacy plaintext cache — start fresh
 
                 self._token_cache = cache
                 authority = f"https://login.microsoftonline.com/{tenant_id}"
@@ -102,8 +104,9 @@ class MicrosoftAuthService:
     def _save_cache(self) -> None:
         if self._token_cache and self._token_cache.has_state_changed:
             try:
-                MSAL_CACHE_PATH.write_text(
-                    self._token_cache.serialize(), encoding="utf-8"
+                from services.encryption_service import encryption_service
+                MSAL_CACHE_PATH.write_bytes(
+                    encryption_service.encrypt_bytes(self._token_cache.serialize().encode("utf-8"))
                 )
             except Exception:
                 pass

@@ -58,9 +58,9 @@ DEFAULT_CONFIG: Dict[str, Any] = {
     # System
     "audit_enabled":      "true",
 
-    # Supabase (pre-filled with project credentials)
-    "supabase_url":       "https://thkwsemjeqtrumzleeqz.supabase.co",
-    "supabase_key":       "sb_publishable_x3p6--QOzt2nwlcNWQsg5A__ngBcoYz",
+    # Supabase (optional; load from environment or Admin Settings, never hardcoded)
+    "supabase_url":       "",
+    "supabase_key":       "",
     "sync_enabled":       "false",   # admin must explicitly enable after running schema
 }
 
