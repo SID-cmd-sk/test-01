@@ -115,6 +115,7 @@ class AdminSettingsPanel(QWidget):
         tabs.addTab(self._build_whatsapp_tab(),        "📱 WhatsApp")
         tabs.addTab(self._build_email_tab(),           "📧 Email")
         tabs.addTab(self._build_notifications_tab(),   "🔔 Notifications")
+        tabs.addTab(self._build_sr_settings_tab(),     "🔢 SR Numbers")
         tabs.addTab(self._build_cloud_tab(),           "☁ Cloud Sync")
         tabs.addTab(self._build_danger_tab(),          "☠ Danger Zone")
 
@@ -334,6 +335,10 @@ class AdminSettingsPanel(QWidget):
         return w
 
     # ── Danger Zone tab ───────────────────────────────────────────────────────
+
+    def _build_sr_settings_tab(self) -> QWidget:
+        from ui.sr_settings_tab import SRSettingsTab
+        return SRSettingsTab()
 
     def _build_cloud_tab(self) -> QWidget:
         """Cloud Sync tab — delegates to CloudSyncSettingsPanel."""

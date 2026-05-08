@@ -127,7 +127,17 @@ class FirstRunSetupDialog(QDialog):
 
         # ── Body ────────────────────────────────────────────────────────────
         body = QFrame()
-        body.setStyleSheet("background: white;")
+        body.setStyleSheet("""
+            QFrame { background: #FFFFFF; }
+            QLabel { color: #1E293B; background: transparent; font-size: 12px; }
+            QLineEdit {
+                background: #F8FAFC; color: #1E293B;
+                border: 1.5px solid #CBD5E1; border-radius: 6px;
+                padding: 0 12px; font-size: 13px;
+            }
+            QLineEdit:focus { background: #FFFFFF; border-color: #3B82F6; }
+            QCheckBox { color: #64748B; font-size: 12px; background: transparent; }
+        """)
         b_lay = QVBoxLayout(body)
         b_lay.setContentsMargins(32, 28, 32, 28)
         b_lay.setSpacing(14)

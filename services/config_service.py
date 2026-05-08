@@ -19,15 +19,21 @@ DEFAULT_CONFIG: Dict[str, Any] = {
     "company_name":       "SR Manager",
     "primary_color":      "#3B82F6",
 
-    # Label overrides (admin can rename anything)
+    # Label overrides
     "label_sr":           "Service Request",
     "label_open":         "Open",
     "label_in_progress":  "In Progress",
     "label_completed":    "Completed",
     "label_closed":       "Closed",
 
+    # SR Number Pattern
+    "sr_number_pattern":  "SR{NNNN}",    # DDMMYYSR{NNNN} or any combo
+    "sr_number_suffix":   "",             # appended after generated number
+    "sr_number_counter":  "1",            # next counter value
+    "sr_types":           "Installation,Activation,Complaint,Service,Maintenance,AMC,Demo,Inspection,Escalation,Purchase Request,Internal Request,Custom",
+
     # WhatsApp
-    "whatsapp_mode":      "qr",          # "qr" | "meta"
+    "whatsapp_mode":      "qr",
     "whatsapp_number":    "",
     "meta_phone_id":      "",
     "meta_access_token":  "",
@@ -47,15 +53,15 @@ DEFAULT_CONFIG: Dict[str, Any] = {
     "email_template":     "{company_name}\n\n{body}",
 
     # Stats / SLA
-    "overdue_days":       "3",           # Phase 1 fix: was hardcoded in stats_service
+    "overdue_days":       "3",
 
     # System
     "audit_enabled":      "true",
 
-    # Supabase (Phase 2)
-    "supabase_url":       "",
-    "supabase_key":       "",
-    "sync_enabled":       "false",
+    # Supabase (pre-filled with project credentials)
+    "supabase_url":       "https://thkwsemjeqtrumzleeqz.supabase.co",
+    "supabase_key":       "sb_publishable_x3p6--QOzt2nwlcNWQsg5A__ngBcoYz",
+    "sync_enabled":       "false",   # admin must explicitly enable after running schema
 }
 
 

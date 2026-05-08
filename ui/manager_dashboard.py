@@ -523,8 +523,10 @@ class ManagerDashboard(QWidget):
             self.sync_lbl.setText("● Saved Locally")
 
     def _open_create(self):
-        dlg = CreateSRDialog(self._users, self._templates, self._srs, self)
-        dlg.sr_created.connect(self._refresh); dlg.exec()
+        from ui.create_sr_dialog import CreateSRDialog as NewCreateSRDialog
+        dlg = NewCreateSRDialog(parent=self, users=self._users)
+        dlg.sr_created.connect(lambda doc: self._refresh())
+        dlg.exec()
 
     def _open_detail(self, sr):
         dlg = SRDetailDialog(sr, self._users, self); dlg.sr_updated.connect(self._refresh); dlg.exec()

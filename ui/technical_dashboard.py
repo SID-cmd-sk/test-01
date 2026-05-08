@@ -440,7 +440,11 @@ class TechnicalDashboard(QWidget):
     def _on_error(self, msg):
         self.sync_lbl.setText("⚠ Sync Error"); self.sync_lbl.setStyleSheet("color:#EF4444;font-size:11px;padding:0 20px;")
 
-    def _open_create(self): dlg = TechCreateSRDialog(self); dlg.sr_created.connect(self._refresh); dlg.exec()
+    def _open_create(self):
+        from ui.create_sr_dialog import CreateSRDialog
+        dlg = CreateSRDialog(parent=self, users=[])
+        dlg.sr_created.connect(lambda doc: self._refresh())
+        dlg.exec()
     def _open_update(self, sr): dlg = TechUpdateDialog(sr, self); dlg.updated.connect(self._refresh); dlg.exec()
 
     def _quick_start(self, sr):

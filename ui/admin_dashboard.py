@@ -306,22 +306,63 @@ class AdminDashboard(QWidget):
 
     def _build_srs_tab(self):
         self.srs_tab = QWidget(); self.srs_tab.setVisible(False)
-        lay = QVBoxLayout(self.srs_tab); lay.setSpacing(16); lay.setContentsMargins(0,0,0,0)
+        lay = QVBoxLayout(self.srs_tab); lay.setSpacing(12); lay.setContentsMargins(0, 0, 0, 0)
 
+        # Header row
         hdr = QHBoxLayout()
-        ttl = QLabel("All Service Requests"); ttl.setObjectName("section_title"); hdr.addWidget(ttl); hdr.addStretch()
+        ttl = QLabel("All Service Requests"); ttl.setObjectName("section_title"); hdr.addWidget(ttl)
+        hdr.addStretch()
+
+        # Filter combo
+        self.sr_filter_combo = QComboBox(); self.sr_filter_combo.setFixedHeight(36); self.sr_filter_combo.setFixedWidth(150)
+        self.sr_filter_combo.addItems(["All", "Pending", "Assigned", "In Progress", "Completed", "Closed", "Escalated"])
+        self.sr_filter_combo.currentTextChanged.connect(self._filter_srs)
+        hdr.addWidget(QLabel("Filter:")); hdr.addWidget(self.sr_filter_combo)
+
+        # NEW SR button — prominent, always visible
+        self.new_sr_btn = QPushButton("➕  New SR")
+        self.new_sr_btn.setObjectName("btn_primary")
+        self.new_sr_btn.setFixedHeight(38)
+        self.new_sr_btn.setMinimumWidth(120)
+        self.new_sr_btn.setToolTip("Create a new Service Request")
+        self.new_sr_btn.clicked.connect(self._open_create_sr)
+        hdr.addWidget(self.new_sr_btn)
+
         lay.addLayout(hdr)
 
         self.srs_table = QTableWidget()
-        self.srs_table.setColumnCount(7)
+        self.srs_table.setColumnCount(8)
         self.srs_table.setHorizontalHeaderLabels(
-            ["Title", "Type", "Status", "Priority", "Pipeline", "Assigned To", "Created"])
+            ["SR #", "Title", "Type", "Status", "Priority", "Assigned To", "Customer", "Created"])
         self.srs_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        self.srs_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
         self.srs_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self.srs_table.verticalHeader().setVisible(False)
         self.srs_table.setAlternatingRowColors(True)
+        self.srs_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         lay.addWidget(self.srs_table)
         self.content_lay.addWidget(self.srs_tab)
+
+    def _open_create_sr(self):
+        from ui.create_sr_dialog import CreateSRDialog
+        dlg = CreateSRDialog(parent=self, users=self._users)
+        dlg.sr_created.connect(self._on_sr_created)
+        dlg.exec()
+
+    def _on_sr_created(self, doc: dict):
+        self._refresh_all()   # reload all data to show new SR
+
+    def _filter_srs(self, status_filter: str):
+        """Show/hide SR rows based on status filter."""
+        for row in range(self.srs_table.rowCount()):
+            status_item = self.srs_table.item(row, 3)
+            if status_item is None:
+                continue
+            row_status = status_item.text().lower().replace("_", " ")
+            if status_filter == "All" or row_status == status_filter.lower():
+                self.srs_table.showRow(row)
+            else:
+                self.srs_table.hideRow(row)
 
     def _build_audit_tab(self):
         self.audit_tab = QWidget(); self.audit_tab.setVisible(False)
@@ -452,23 +493,26 @@ class AdminDashboard(QWidget):
         user_map = {u.get("uid", u.get("id","")): u.get("name","?") for u in users}
         self.srs_table.setRowCount(len(srs))
         for row, sr in enumerate(srs):
-            status   = sr.get("status","open")
-            ps       = sr.get("pipeline_state")
-            pipe_lbl = ps.get("template_name","—") if isinstance(ps, dict) else "—"
-            cells    = [
-                truncate(sr.get("title","—"), 40),
-                sr.get("type","—").replace("_"," ").title(),
-                status.replace("_"," ").title(),
-                sr.get("priority","medium").capitalize(),
-                pipe_lbl,
-                user_map.get(sr.get("assigned_to",""), "Unassigned"),
+            status   = sr.get("status", "open")
+            priority = sr.get("priority", "medium")
+            cells = [
+                sr.get("sr_number", "—"),
+                truncate(sr.get("title", "—"), 40),
+                sr.get("sr_type", sr.get("type", "—")).replace("_", " ").title(),
+                status.replace("_", " ").title(),
+                priority.capitalize(),
+                user_map.get(sr.get("assigned_to", ""), "Unassigned"),
+                truncate(sr.get("customer_name", "—"), 25),
                 format_datetime(sr.get("created_at")),
             ]
             for col, text in enumerate(cells):
-                item = QTableWidgetItem(text)
+                item = QTableWidgetItem(str(text))
                 item.setFlags(Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable)
-                if col == 2:
+                if col == 3:   # Status column — colour coded
                     item.setForeground(QColor(status_color(status)))
+                    item.setFont(QFont("", -1, QFont.Weight.Bold))
+                if col == 4:   # Priority column — colour coded
+                    item.setForeground(QColor(priority_color(priority)))
                     item.setFont(QFont("", -1, QFont.Weight.Bold))
                 self.srs_table.setItem(row, col, item)
             self.srs_table.setRowHeight(row, 40)
