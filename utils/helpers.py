@@ -1,10 +1,31 @@
 # utils/helpers.py
-"""Shared helpers: formatting, validation, dynamic stylesheet builder."""
+"""
+Shared helpers — every function used anywhere in the codebase lives here.
+
+Functions:
+  utc_now_iso()             — current UTC time as ISO string
+  format_datetime(s)        — pretty-print ISO datetime
+  validate_email(s)         — basic email check, returns bool
+  validate_password(s)      — min-length check, returns bool
+  validate_time(s)          — HH:MM format check, returns bool
+  validate_required(v, f)   — non-empty check, returns (bool, msg)
+  truncate(s, n)            — shorten string with ellipsis
+  days_since(iso)           — integer days since an ISO datetime
+  status_color(s)           — hex colour for SR status string
+  priority_color(s)         — hex colour for priority string
+  role_badge_color(s)       — hex colour for role string
+  availability_color(n)     — (hex, label) for active-SR count
+  generate_sr_number(p,n,s) — build SR number from pattern
+  next_sr_number()          — generate + auto-increment counter
+  build_stylesheet(primary) — full app-wide QSS string
+"""
 
 import re
 from datetime import datetime, timezone
 from typing import Tuple
 
+
+# ── Time helpers ──────────────────────────────────────────────────────────────
 
 def utc_now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
@@ -20,47 +41,97 @@ def format_datetime(iso_str: str | None) -> str:
         return iso_str[:16] if iso_str else "—"
 
 
+def days_since(iso_str: str | None) -> int:
+    """Return integer days elapsed since an ISO datetime string. Returns 0 on error."""
+    if not iso_str:
+        return 0
+    try:
+        dt  = datetime.fromisoformat(iso_str.replace("Z", "+00:00"))
+        now = datetime.now(timezone.utc)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return max(0, (now - dt).days)
+    except Exception:
+        return 0
+
+
+# ── Validation helpers ────────────────────────────────────────────────────────
+
 def validate_email(email: str) -> bool:
-    return bool(re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", email.strip()))
+    return bool(re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", (email or "").strip()))
 
 
 def validate_password(password: str) -> bool:
-    return len(password) >= 8
+    return len(password or "") >= 8
 
+
+def validate_time(time_str: str) -> bool:
+    """Return True if time_str is HH:MM format (00:00 – 23:59)."""
+    try:
+        h, m = time_str.strip().split(":")
+        return 0 <= int(h) <= 23 and 0 <= int(m) <= 59
+    except Exception:
+        return False
+
+
+def validate_required(value: str, field_name: str = "Field") -> Tuple[bool, str]:
+    """Return (True, '') if value is non-empty, else (False, error message)."""
+    if value and str(value).strip():
+        return True, ""
+    return False, f"{field_name} is required."
+
+
+# ── String helpers ────────────────────────────────────────────────────────────
+
+def truncate(text: str | None, max_len: int = 40) -> str:
+    """Shorten text to max_len characters, appending '…' if trimmed."""
+    if not text:
+        return "—"
+    s = str(text)
+    return s if len(s) <= max_len else s[:max_len - 1] + "…"
+
+
+# ── Colour helpers ────────────────────────────────────────────────────────────
 
 def status_color(status: str) -> str:
-    colors = {
-        "open":          "#3B82F6",
-        "pending":       "#F59E0B",
-        "assigned":      "#8B5CF6",
-        "in progress":   "#06B6D4",
-        "in_progress":   "#06B6D4",
-        "waiting":       "#F97316",
-        "completed":     "#10B981",
-        "closed":        "#6B7280",
-        "escalated":     "#EF4444",
-        "cancelled":     "#9CA3AF",
-        "reopened":      "#F59E0B",
-    }
-    return colors.get((status or "").lower(), "#64748B")
+    return {
+        "open":           "#3B82F6",
+        "pending":        "#F59E0B",
+        "assigned":       "#8B5CF6",
+        "in progress":    "#06B6D4",
+        "in_progress":    "#06B6D4",
+        "waiting":        "#F97316",
+        "waiting approval": "#F97316",
+        "waiting_approval": "#F97316",
+        "completed":      "#10B981",
+        "closed":         "#6B7280",
+        "escalated":      "#EF4444",
+        "cancelled":      "#9CA3AF",
+        "reopened":       "#F59E0B",
+    }.get((status or "").lower().strip(), "#64748B")
 
 
 def priority_color(priority: str) -> str:
-    return {"low": "#10B981", "medium": "#F59E0B", "high": "#EF4444",
-            "critical": "#7C3AED"}.get((priority or "").lower(), "#64748B")
+    return {
+        "low":      "#10B981",
+        "medium":   "#F59E0B",
+        "high":     "#EF4444",
+        "critical": "#7C3AED",
+    }.get((priority or "").lower(), "#64748B")
 
 
 def role_badge_color(role: str) -> str:
-    colors = {
-        "admin":     "#3B82F6",
-        "manager":   "#8B5CF6",
-        "technical": "#10B981",
-        "viewer":    "#6B7280",
-    }
-    return colors.get((role or "").lower(), "#64748B")
+    return {
+        "master_admin": "#DC2626",
+        "admin":        "#3B82F6",
+        "manager":      "#8B5CF6",
+        "technical":    "#10B981",
+        "viewer":       "#6B7280",
+    }.get((role or "").lower(), "#64748B")
 
 
 def availability_color(active_count: int) -> Tuple[str, str]:
+    """Return (hex_colour, label) based on how many active SRs a user has."""
     if active_count == 0:
         return "#10B981", "Available"
     elif active_count <= 3:
@@ -69,73 +140,80 @@ def availability_color(active_count: int) -> Tuple[str, str]:
         return "#EF4444", "Overloaded"
 
 
-# ── SR Number Pattern ─────────────────────────────────────────────────────────
+# ── SR Number helpers ─────────────────────────────────────────────────────────
 
 def generate_sr_number(pattern: str, counter: int, suffix: str = "") -> str:
     """
-    Generate a formatted SR number from a pattern.
+    Build an SR number from a pattern string.
 
-    Pattern variables:
-        DD    - day (2 digits)
-        MM    - month (2 digits)
-        YY    - year (2 digits)
-        YYYY  - year (4 digits)
-        NNNN  - zero-padded counter (width = number of Ns)
+    Pattern tokens:
+      DD    — day   (2 digits, zero-padded)
+      MM    — month (2 digits, zero-padded)
+      YY    — year  (2 digits)
+      YYYY  — year  (4 digits)
+      {N…}  — counter, zero-padded to the number of N characters
 
-    Examples:
-        pattern="DDMMYYSR{NNNN}" counter=5  → "010524SR0005"
-        pattern="SR{NNNN}"        counter=69 → "SR0069"
-        pattern="{NNNN}SRDDMMYY"  counter=1  → "0001SR010524"
+    Examples (counter=5, date=01 May 2024):
+      "SR{NNNN}"           → "SR0005"
+      "DDMMYYSR{NNNN}"     → "010524SR0005"
+      "{NNNN}SRDDMMYY"     → "0005SR010524"
 
-    suffix is appended at the end if non-empty.
+    suffix is always appended at the very end.
     """
-    now = datetime.now()
-    result = pattern
-    # Date substitutions
+    import re as _re
+    now    = datetime.now()
+    result = str(pattern)
+
+    # Date substitutions (order matters — YYYY before YY)
     result = result.replace("YYYY", now.strftime("%Y"))
     result = result.replace("DD",   now.strftime("%d"))
     result = result.replace("MM",   now.strftime("%m"))
     result = result.replace("YY",   now.strftime("%y"))
 
-    # Counter: find {N+} pattern and pad accordingly
-    import re as _re
+    # Counter token {N+}
     m = _re.search(r'\{(N+)\}', result)
     if m:
-        width = len(m.group(1))
+        width  = len(m.group(1))
         result = result[:m.start()] + str(counter).zfill(width) + result[m.end():]
     else:
-        # fallback: append padded counter
         result = result + str(counter).zfill(4)
 
     if suffix:
-        result = result + suffix
+        result = result + str(suffix)
     return result
 
 
 def next_sr_number() -> str:
-    """Read pattern + counter from config, generate number, increment counter."""
+    """
+    Read SR number pattern + counter from global_config,
+    generate the next SR number, and increment + save the counter.
+    """
     try:
         from services.config_service import global_config
-        from db import storage
         cfg     = global_config.get()
         pattern = cfg.get("sr_number_pattern", "SR{NNNN}")
         suffix  = cfg.get("sr_number_suffix",  "")
         counter = int(cfg.get("sr_number_counter", "1"))
         num     = generate_sr_number(pattern, counter, suffix)
-        # Save incremented counter
         global_config.save({**cfg, "sr_number_counter": str(counter + 1)})
         return num
     except Exception:
-        from datetime import datetime as _dt
-        return f"SR{_dt.now().strftime('%d%m%y')}{str(__import__('random').randint(1,9999)).zfill(4)}"
+        import random
+        return "SR{}{:04d}".format(
+            datetime.now().strftime("%d%m%y"),
+            random.randint(1, 9999)
+        )
 
 
-# ── Dynamic stylesheet ────────────────────────────────────────────────────────
+# ── Stylesheet ────────────────────────────────────────────────────────────────
 
 def build_stylesheet(primary: str = "#3B82F6") -> str:
     """
-    Full app-wide QSS. All text is explicitly dark so nothing is white-on-white.
-    Inputs, labels, dialogs, combo boxes — all have enforced contrast.
+    Full app-wide QSS.
+
+    All foreground colours are EXPLICITLY set — nothing inherits white-on-white.
+    Covers: base widgets, sidebar, buttons, inputs, combos, tables, tabs,
+            group boxes, checkboxes, scrollbars, dialogs, message boxes, tooltips.
     """
     def darken(hex_color: str, factor: float = 0.85) -> str:
         h = hex_color.lstrip("#")
@@ -144,56 +222,38 @@ def build_stylesheet(primary: str = "#3B82F6") -> str:
             int(r * factor), int(g * factor), int(b * factor))
 
     dark  = darken(primary)
-    light = "#EFF6FF"   # pale blue tint for selected rows
+    light = "#EFF6FF"
 
     return f"""
-/* ══════════════════════════════════════════════════════
-   SR Manager Enterprise — Global Stylesheet
-   All foreground colours are explicitly set so nothing
-   is ever white-on-white or invisible.
-   ══════════════════════════════════════════════════════ */
+/* ══════════════════════════════════════════════════════════
+   SR Manager Enterprise — Global QSS
+   Every widget has an explicit foreground colour.
+   Nothing is allowed to be white-on-white.
+   ══════════════════════════════════════════════════════════ */
 
 /* ── Base ── */
-QMainWindow, QDialog, QWidget {{
+QMainWindow, QWidget {{
     background-color: #F1F5F9;
     color: #1E293B;
     font-family: 'Segoe UI', Arial, sans-serif;
     font-size: 13px;
 }}
+QDialog {{
+    background: #FFFFFF;
+    color: #1E293B;
+}}
 
-/* Force all plain labels to dark text */
+/* Force ALL labels to dark text */
 QLabel {{
     color: #1E293B;
     background: transparent;
 }}
 
-/* ── Dialogs get white bg with dark text ── */
-QDialog {{
-    background: #FFFFFF;
-    color: #1E293B;
-}}
-QDialog QLabel {{
-    color: #1E293B;
-}}
-QDialog QLineEdit, QDialog QTextEdit,
-QDialog QComboBox, QDialog QSpinBox {{
-    background: #FFFFFF;
-    color: #1E293B;
-    border: 1.5px solid #CBD5E1;
-    border-radius: 6px;
-    padding: 7px 10px;
-}}
-QDialog QLineEdit:focus, QDialog QTextEdit:focus,
-QDialog QComboBox:focus, QDialog QSpinBox:focus {{
-    border-color: {primary};
-}}
-
 /* ── Sidebar ── */
-#sidebar {{
+QWidget#sidebar {{
     background-color: #1E293B;
-    color: #CBD5E1;
 }}
-#sidebar_nav {{
+QPushButton#sidebar_nav {{
     background: transparent;
     color: #CBD5E1;
     border: none;
@@ -202,89 +262,146 @@ QDialog QComboBox:focus, QDialog QSpinBox:focus {{
     font-size: 13px;
     border-radius: 6px;
     margin: 2px 8px;
+    font-weight: normal;
 }}
-#sidebar_nav:hover   {{ background: #334155; color: #F1F5F9; }}
-#sidebar_nav:checked {{ background: {primary}; color: #FFFFFF; font-weight: bold; }}
+QPushButton#sidebar_nav:hover   {{ background: #334155; color: #F1F5F9; }}
+QPushButton#sidebar_nav:checked {{ background: {primary}; color: #FFFFFF; font-weight: bold; }}
 
-/* ── Buttons ── */
+/* ── Buttons — base (un-named buttons get neutral look) ── */
 QPushButton {{
-    color: #1E293B;
     background: #E2E8F0;
+    color: #334155;
+    border: 1px solid #CBD5E1;
+    border-radius: 6px;
+    padding: 7px 18px;
+    font-weight: bold;
+    font-size: 13px;
+}}
+QPushButton:hover   {{ background: #CBD5E1; color: #1E293B; }}
+QPushButton:pressed {{ background: #94A3B8; color: #1E293B; }}
+QPushButton:disabled {{ background: #F1F5F9; color: #94A3B8; border-color: #E2E8F0; }}
+
+QPushButton#btn_primary {{
+    background: {primary};
+    color: #FFFFFF;
     border: none;
     border-radius: 6px;
     padding: 8px 20px;
     font-weight: bold;
 }}
-QPushButton:hover {{ background: #CBD5E1; }}
-
-QPushButton#btn_primary {{
-    background: {primary}; color: #FFFFFF;
-    border: none; border-radius: 6px;
-    padding: 8px 20px; font-weight: bold;
-}}
 QPushButton#btn_primary:hover    {{ background: {dark};   color: #FFFFFF; }}
-QPushButton#btn_primary:disabled {{ background: #93C5FD; color: #FFFFFF; }}
+QPushButton#btn_primary:pressed  {{ background: {darken(primary, 0.75)}; color: #FFFFFF; }}
+QPushButton#btn_primary:disabled {{ background: #93C5FD; color: #FFFFFF; border: none; }}
 
 QPushButton#btn_secondary {{
-    background: #E2E8F0; color: #334155;
-    border: 1px solid #CBD5E1;
-    border-radius: 6px; padding: 8px 20px; font-weight: bold;
+    background: #FFFFFF;
+    color: #334155;
+    border: 1.5px solid #CBD5E1;
+    border-radius: 6px;
+    padding: 8px 20px;
+    font-weight: bold;
 }}
-QPushButton#btn_secondary:hover {{ background: #CBD5E1; color: #1E293B; }}
+QPushButton#btn_secondary:hover {{ background: #F1F5F9; color: #1E293B; }}
 
 QPushButton#btn_success {{
     background: #10B981; color: #FFFFFF;
-    border: none; border-radius: 6px;
-    padding: 8px 20px; font-weight: bold;
+    border: none; border-radius: 6px; padding: 8px 20px; font-weight: bold;
 }}
 QPushButton#btn_success:hover {{ background: #059669; }}
 
 QPushButton#btn_danger {{
     background: #EF4444; color: #FFFFFF;
-    border: none; border-radius: 6px;
-    padding: 8px 20px; font-weight: bold;
+    border: none; border-radius: 6px; padding: 8px 20px; font-weight: bold;
 }}
 QPushButton#btn_danger:hover {{ background: #DC2626; }}
 
 QPushButton#btn_warning {{
     background: #F59E0B; color: #FFFFFF;
-    border: none; border-radius: 6px;
-    padding: 8px 20px; font-weight: bold;
+    border: none; border-radius: 6px; padding: 8px 20px; font-weight: bold;
 }}
 QPushButton#btn_warning:hover {{ background: #D97706; }}
 
-/* ── Inputs — always dark text on white bg ── */
-QLineEdit, QTextEdit, QPlainTextEdit,
-QComboBox, QSpinBox, QDoubleSpinBox, QDateEdit, QTimeEdit {{
+/* ── Inputs — always dark text on white/light bg ── */
+QLineEdit, QTextEdit, QPlainTextEdit {{
     background: #FFFFFF;
     color: #1E293B;
     border: 1.5px solid #CBD5E1;
     border-radius: 6px;
-    padding: 7px 10px;
+    padding: 6px 10px;
+    font-size: 13px;
+    selection-background-color: {light};
+    selection-color: #1E293B;
 }}
-QLineEdit:focus, QTextEdit:focus,
-QComboBox:focus, QSpinBox:focus {{
+QLineEdit:focus, QTextEdit:focus, QPlainTextEdit:focus {{
     border-color: {primary};
-    outline: none;
+    background: #FFFFFF;
 }}
-QLineEdit:disabled, QTextEdit:disabled,
-QComboBox:disabled, QSpinBox:disabled {{
-    background: #F1F5F9;
+QLineEdit:disabled, QTextEdit:disabled {{
+    background: #F8FAFC;
     color: #94A3B8;
+    border-color: #E2E8F0;
+}}
+QLineEdit[echoMode="2"] {{   /* password fields */
+    letter-spacing: 2px;
 }}
 
-/* ComboBox dropdown list — dark text */
+/* ── ComboBox ── */
+QComboBox {{
+    background: #FFFFFF;
+    color: #1E293B;
+    border: 1.5px solid #CBD5E1;
+    border-radius: 6px;
+    padding: 6px 10px;
+    font-size: 13px;
+}}
+QComboBox:focus  {{ border-color: {primary}; }}
+QComboBox:disabled {{ background: #F8FAFC; color: #94A3B8; }}
+QComboBox::drop-down {{
+    border: none;
+    padding-right: 10px;
+    width: 20px;
+}}
+QComboBox::down-arrow {{
+    image: none;
+    width: 0; height: 0;
+    border-left:  4px solid transparent;
+    border-right: 4px solid transparent;
+    border-top:   6px solid #64748B;
+}}
 QComboBox QAbstractItemView {{
     background: #FFFFFF;
     color: #1E293B;
+    border: 1px solid #CBD5E1;
+    border-radius: 4px;
     selection-background-color: {light};
     selection-color: #1E293B;
-    border: 1px solid #CBD5E1;
     outline: none;
+    padding: 4px;
 }}
-QComboBox::drop-down {{ border: none; padding-right: 8px; }}
-QComboBox::down-arrow {{
-    width: 12px; height: 12px;
+QComboBox QAbstractItemView::item {{
+    padding: 6px 10px;
+    min-height: 28px;
+    color: #1E293B;
+}}
+QComboBox QAbstractItemView::item:hover {{
+    background: {light};
+    color: #1E293B;
+}}
+
+/* ── SpinBox ── */
+QSpinBox, QDoubleSpinBox {{
+    background: #FFFFFF;
+    color: #1E293B;
+    border: 1.5px solid #CBD5E1;
+    border-radius: 6px;
+    padding: 6px 10px;
+}}
+QSpinBox:focus, QDoubleSpinBox:focus {{ border-color: {primary}; }}
+QSpinBox::up-button, QSpinBox::down-button,
+QDoubleSpinBox::up-button, QDoubleSpinBox::down-button {{
+    background: #F1F5F9;
+    border: none;
+    width: 18px;
 }}
 
 /* ── Tables ── */
@@ -294,18 +411,22 @@ QTableWidget {{
     border: 1px solid #E2E8F0;
     border-radius: 8px;
     gridline-color: #F1F5F9;
+    alternate-background-color: #F8FAFC;
     selection-background-color: {light};
     selection-color: #1E293B;
-    alternate-background-color: #F8FAFC;
+    outline: none;
 }}
 QTableWidget::item {{
     padding: 8px 12px;
-    border-bottom: 1px solid #F1F5F9;
     color: #1E293B;
+    border-bottom: 1px solid #F1F5F9;
 }}
 QTableWidget::item:selected {{
     background: {light};
     color: #1E293B;
+}}
+QTableWidget::item:hover {{
+    background: #F8FAFC;
 }}
 QHeaderView::section {{
     background: #F8FAFC;
@@ -317,22 +438,26 @@ QHeaderView::section {{
     border-bottom: 2px solid #E2E8F0;
     border-right: 1px solid #E2E8F0;
 }}
+QHeaderView::section:checked {{
+    background: {light};
+}}
 
-/* ── Tabs ── */
+/* ── Tab widget ── */
 QTabWidget::pane {{
     border: 1px solid #E2E8F0;
     background: #FFFFFF;
-    border-radius: 8px;
+    border-radius: 0 8px 8px 8px;
 }}
 QTabBar::tab {{
     background: #F1F5F9;
     color: #475569;
     border: 1px solid #E2E8F0;
     border-bottom: none;
-    padding: 8px 18px;
+    padding: 8px 16px;
     border-top-left-radius: 6px;
     border-top-right-radius: 6px;
     font-weight: bold;
+    min-width: 80px;
     margin-right: 2px;
 }}
 QTabBar::tab:selected {{
@@ -349,25 +474,30 @@ QTabBar::tab:hover:!selected {{
 QGroupBox {{
     color: #1E293B;
     font-weight: bold;
+    font-size: 13px;
     border: 1.5px solid #CBD5E1;
     border-radius: 8px;
-    margin-top: 12px;
-    padding-top: 10px;
+    margin-top: 14px;
+    padding-top: 8px;
+    background: #FFFFFF;
 }}
 QGroupBox::title {{
     subcontrol-origin: margin;
     subcontrol-position: top left;
-    padding: 0 8px;
+    left: 12px;
+    padding: 0 6px;
     color: #1E293B;
-    background: #F1F5F9;
+    background: #FFFFFF;
 }}
 
 /* ── CheckBox & RadioButton ── */
 QCheckBox, QRadioButton {{
     color: #1E293B;
+    background: transparent;
     spacing: 8px;
+    font-size: 13px;
 }}
-QCheckBox::indicator {{
+QCheckBox::indicator, QRadioButton::indicator {{
     width: 16px; height: 16px;
     border: 1.5px solid #CBD5E1;
     border-radius: 4px;
@@ -377,10 +507,15 @@ QCheckBox::indicator:checked {{
     background: {primary};
     border-color: {primary};
 }}
+QRadioButton::indicator {{ border-radius: 8px; }}
+QRadioButton::indicator:checked {{
+    background: {primary};
+    border-color: {primary};
+}}
 
 /* ── Scrollbars ── */
 QScrollBar:vertical {{
-    background: #F1F5F9; width: 8px; border-radius: 4px;
+    background: #F1F5F9; width: 8px; border-radius: 4px; margin: 0;
 }}
 QScrollBar::handle:vertical {{
     background: #CBD5E1; border-radius: 4px; min-height: 30px;
@@ -388,7 +523,7 @@ QScrollBar::handle:vertical {{
 QScrollBar::handle:vertical:hover {{ background: #94A3B8; }}
 QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{ height: 0; }}
 QScrollBar:horizontal {{
-    background: #F1F5F9; height: 8px; border-radius: 4px;
+    background: #F1F5F9; height: 8px; border-radius: 4px; margin: 0;
 }}
 QScrollBar::handle:horizontal {{
     background: #CBD5E1; border-radius: 4px; min-width: 30px;
@@ -397,31 +532,69 @@ QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {{ width: 0; }}
 
 /* ── Named labels ── */
 QLabel#section_title {{
-    font-size: 18px; font-weight: bold; color: #0F172A;
+    font-size: 18px; font-weight: bold; color: #0F172A; background: transparent;
 }}
 QLabel#error_label {{
     color: #EF4444; font-size: 12px;
-    background: #FEF2F2; border-radius: 6px; padding: 6px 10px;
+    background: #FEF2F2; border-radius: 6px; padding: 8px 12px;
 }}
-QLabel#info_label  {{ color: #64748B; font-size: 12px; }}
+QLabel#info_label  {{ color: #64748B; font-size: 12px; background: transparent; }}
+QLabel#badge       {{
+    border-radius: 4px; padding: 2px 8px;
+    font-size: 11px; font-weight: bold;
+}}
 
 /* ── Frames / Cards ── */
 QFrame#stat_card {{
-    background: #FFFFFF; border-radius: 10px; border: 1px solid #E2E8F0;
+    background: #FFFFFF;
+    border-radius: 10px;
+    border: 1px solid #E2E8F0;
 }}
 QFrame#login_card {{
-    background: #FFFFFF; border-radius: 14px; border: 1px solid #E2E8F0;
-    padding: 10px;
-}}
-QFrame#content_area {{
     background: #FFFFFF;
+    border-radius: 16px;
+    border: none;
+}}
+QFrame#content_area {{ background: #FFFFFF; }}
+
+/* ── Progress bar ── */
+QProgressBar {{
+    background: #E2E8F0;
+    border-radius: 4px;
+    border: none;
+    color: transparent;
+    text-align: center;
+}}
+QProgressBar::chunk {{
+    background: {primary};
+    border-radius: 4px;
 }}
 
 /* ── Tooltips ── */
 QToolTip {{
-    background: #1E293B; color: #F1F5F9;
-    border: none; border-radius: 4px; padding: 4px 8px;
+    background: #1E293B;
+    color: #F1F5F9;
+    border: none;
+    border-radius: 4px;
+    padding: 4px 8px;
+    font-size: 12px;
 }}
+
+/* ── Menu bar / menus ── */
+QMenuBar {{
+    background: #1E293B;
+    color: #CBD5E1;
+}}
+QMenuBar::item:selected {{ background: #334155; color: #F1F5F9; }}
+QMenu {{
+    background: #FFFFFF;
+    color: #1E293B;
+    border: 1px solid #E2E8F0;
+    border-radius: 6px;
+    padding: 4px;
+}}
+QMenu::item {{ padding: 8px 20px; border-radius: 4px; }}
+QMenu::item:selected {{ background: {light}; color: #1E293B; }}
 
 /* ── Message boxes ── */
 QMessageBox {{
@@ -430,5 +603,15 @@ QMessageBox {{
 }}
 QMessageBox QLabel {{
     color: #1E293B;
+    font-size: 13px;
+    background: transparent;
 }}
+QMessageBox QPushButton {{
+    min-width: 80px;
+    padding: 6px 16px;
+}}
+
+/* ── Dialogs inner widgets ── */
+QDialog QLabel  {{ color: #1E293B; background: transparent; }}
+QDialog QWidget {{ background: #FFFFFF; color: #1E293B; }}
 """
