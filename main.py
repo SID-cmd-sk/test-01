@@ -77,13 +77,15 @@ class MainWindow(QMainWindow):
         elif role == "technical":
             self._show_technical()
         else:
-            QMessageBox.information(
-                self, "Role Info",
-                f"Logged in with role '{role}'.\n"
-                f"Using Technical dashboard as default.\n"
-                f"Contact your admin to assign a recognised role."
+            QMessageBox.warning(
+                self, "Role Not Authorized",
+                f"Role '{role}' is not permitted to open an operational dashboard.\n"
+                f"Contact your admin to assign admin, manager, or technical access."
             )
-            self._show_technical()
+            from db import storage
+            storage.logout()
+            session.clear()
+            self._stack.setCurrentWidget(self._login)
 
     # ── Dashboard display ──────────────────────────────────────────────────────
 

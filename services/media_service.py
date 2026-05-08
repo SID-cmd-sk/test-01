@@ -18,6 +18,7 @@ Storage strategy:
 
 from __future__ import annotations
 
+import hashlib
 import mimetypes
 import os
 import shutil
@@ -46,7 +47,19 @@ class AttachmentError(Exception):
 
 
 def allowed_file(path: str | Path) -> bool:
-    return Path(path).suffix.lower() in ALLOWED_EXTENSIONS
+    path = Path(path)
+    if path.suffix.lower() not in ALLOWED_EXTENSIONS:
+        return False
+    mime_type, _ = mimetypes.guess_type(str(path))
+    return bool(mime_type) or path.suffix.lower() in {".log"}
+
+
+def _sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with open(path, "rb") as fh:
+        for chunk in iter(lambda: fh.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
 
 
 def save_attachment(
@@ -66,7 +79,7 @@ def save_attachment(
         raise AttachmentError(f"File not found: {src}")
 
     ext = src.suffix.lower()
-    if ext not in ALLOWED_EXTENSIONS:
+    if not allowed_file(src):
         raise AttachmentError(
             f"File type '{ext}' is not allowed.\n"
             f"Supported: {', '.join(sorted(ALLOWED_EXTENSIONS))}"
@@ -89,6 +102,7 @@ def save_attachment(
     shutil.copy2(src, dest)
 
     mime_type, _ = mimetypes.guess_type(str(src))
+    checksum = _sha256(src)
 
     from utils.helpers import utc_now_iso
     metadata = {
@@ -98,7 +112,9 @@ def save_attachment(
         "local_path":    str(dest),
         "cloud_url":     "",          # populated after Supabase upload
         "file_size":     size_bytes,
+        "sha256":        checksum,
         "mime_type":     mime_type or "application/octet-stream",
+        "storage_path":  f"{sr_id}/{filename}",
         "uploaded_by":   uploaded_by_uid,
         "created_at":    utc_now_iso(),
         "_dirty":        True,
@@ -214,30 +230,37 @@ def upload_pending_attachments() -> tuple[int, int]:
         return 0, 0
 
     all_atts = local_storage.get_collection("attachments")
-    pending  = [a for a in all_atts if a.get("_needs_upload") and a.get("local_path")]
+    pending  = [a for a in all_atts if a.get("_needs_upload") and a.get("local_path") and not a.get("cloud_url")]
 
     ok = fail = 0
     for att in pending:
         local_path = Path(att.get("local_path", ""))
         if not local_path.exists():
+            local_storage.update_document("attachments", att["id"], {"upload_error": "Local file missing; upload will retry when file is restored."})
+            fail += 1
             continue
         try:
-            sr_id    = att.get("sr_id", "unknown")
-            storage_path = f"{sr_id}/{local_path.name}"
+            storage_path = att.get("storage_path") or f"{att.get('sr_id', 'unknown')}/{local_path.name}"
             with open(local_path, "rb") as f:
                 supabase_service._client.storage.from_("attachments").upload(
                     path=storage_path,
                     file=f,
-                    file_options={"content-type": att.get("mime_type", "application/octet-stream")},
+                    file_options={"content-type": att.get("mime_type", "application/octet-stream"), "upsert": "true"},
                 )
             # Get public URL
             url_resp = supabase_service._client.storage.from_("attachments").get_public_url(storage_path)
             local_storage.update_document("attachments", att["id"], {
                 "cloud_url":     url_resp,
+                "storage_path":  storage_path,
+                "upload_error":  "",
                 "_needs_upload": False,
             })
             ok += 1
-        except Exception:
+        except Exception as exc:
+            try:
+                local_storage.update_document("attachments", att["id"], {"upload_error": str(exc)[:300]})
+            except Exception:
+                pass
             fail += 1
 
     return ok, fail

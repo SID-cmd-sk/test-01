@@ -24,7 +24,27 @@ DEFAULT_PERMISSIONS: Dict[str, List[str]] = {
         "view_own_srs", "create_sr", "update_sr_status",
         "skip_pipeline_steps", "view_reports",
     ],
+    "viewer": [
+        "view_own_srs",
+    ],
 }
+
+DANGEROUS_COLLECTION_PERMISSIONS: Dict[str, Dict[str, str]] = {
+    "users": {"create": "create_user", "update": "edit_user", "delete": "delete_user"},
+    "roles": {"create": "manage_roles", "update": "manage_roles", "delete": "manage_roles"},
+    "role_overrides": {"create": "manage_roles", "update": "manage_roles", "delete": "manage_roles"},
+    "pipeline_templates": {"create": "build_pipelines", "update": "build_pipelines", "delete": "build_pipelines"},
+    "settings": {"create": "manage_settings", "update": "manage_settings", "delete": "manage_settings"},
+}
+
+
+def require_permission(permission: str) -> None:
+    if not session.is_logged_in() or not session.can(permission):
+        raise PermissionError(f"Permission required: {permission}")
+
+
+def permission_for(collection: str, action: str) -> Optional[str]:
+    return DANGEROUS_COLLECTION_PERMISSIONS.get(collection, {}).get(action)
 
 
 class Session:

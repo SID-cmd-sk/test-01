@@ -59,7 +59,7 @@ class CloudSyncSettingsPanel(QWidget):
         self.sb_key.setPlaceholderText("eyJhbGciOiJIUzI1NiIsInR5cCI6...")
         self.sb_key.setEchoMode(QLineEdit.EchoMode.Password)
         self.sb_key.setFixedHeight(36)
-        sf.addRow("Service Role Key", self.sb_key)
+        sf.addRow("Supabase API Key", self.sb_key)
 
         show_key = QCheckBox("Show key")
         show_key.toggled.connect(
@@ -104,7 +104,7 @@ class CloudSyncSettingsPanel(QWidget):
 
         note = QLabel(
             "ℹ  Run <b>setup/supabase_schema.sql</b> in Supabase SQL Editor before enabling sync. "
-            "Use the <b>Service Role Key</b> (not anon key) for full access."
+            "Prefer a least-privilege key/policy for your deployment and never commit keys."
         )
         note.setWordWrap(True)
         note.setStyleSheet("font-size: 11px; color: #64748B;")

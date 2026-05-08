@@ -121,6 +121,7 @@ class SupabaseService:
         "reports":          "reports",
         "audit_log":        "activity_logs",
         "logs":             "activity_logs",
+        "attachments":      "attachments",
         "pipeline_templates": "pipelines",
         "roles":            "roles",
     }
@@ -256,7 +257,7 @@ class SupabaseService:
         """
         cleaned = dict(doc)
         # Remove local-only fields
-        for field in ("_dirty", "password_hash", "password",
+        for field in ("_dirty", "_deleted", "_needs_upload", "password_hash", "password",
                       "is_master_admin", "_role_doc"):
             cleaned.pop(field, None)
         # Supabase wants 'id' as the PK column
